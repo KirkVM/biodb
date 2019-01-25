@@ -1,6 +1,6 @@
 import argparse,os# sqlite3,os,sys,argparse,yaml
 from Bio import SeqIO
-import kazykools# import pullfamily
+import cazydbscrapers
 import entrez_requests
 
 def grab_cazyseqs(ghfam,email,outfolder):
@@ -8,7 +8,7 @@ def grab_cazyseqs(ghfam,email,outfolder):
         #os.mkdir(os.path.join(os.getcwd(),outfolder))
         os.mkdir(outfolder)
     print('starting CAZY scrape')
-    czes_=kazykools.scrape_cazyfam(f'GH{ghfam}')
+    czes_=cazydbscrapers.scrape_cazyfam(f'GH{ghfam}')
     print('Now downloading fasta protein sequences through Biopython-implementation of Entrez eutil API')
     aHT=entrez_requests.pullgb_fromcazyobjs(czes_,email)
     for subfam in aHT.keys():
