@@ -4,6 +4,16 @@ import cazydbscrapers
 import entrez_requests
 
 def grab_cazyseqs(ghfam,email,outfolder):
+    """scrapes CAZY db for accession codes/annotations info, then downloads seqs through NCBI Entrez
+
+    Arguments:
+        ghfam: shorthand name of GH family of interest (GH5, GH43, etc)
+        email: email to use in registering with Entrez eutil API
+        outfolder: path to folder to output sequence files (creates by default if needed)
+
+    Returns:
+        sqlite db (also writes out pseq fasta file)
+    """
     if not os.path.exists(outfolder):
         #os.mkdir(os.path.join(os.getcwd(),outfolder))
         os.mkdir(outfolder)
