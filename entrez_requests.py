@@ -4,6 +4,7 @@ from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
 from Bio.Alphabet import IUPAC
+import sqlite3,atexit
 
 def _getgbseqrec(gbid):
 	handle=Entrez.efetch(db="protein",id=gbid,rettype="fasta",retmode="xml")
@@ -11,8 +12,23 @@ def _getgbseqrec(gbid):
 	sr=SeqRecord(Seq(a[0]['TSeq_sequence'],IUPAC.protein),id=gbid,description=a[0]['TSeq_defline'])
 	return sr
 
-def pullgb_fromcazyobjs(czes_,email):
+def pullgb_fromcazyobjs(czes_,email,cazydbpath,api_key=None):
     Entrez.email=email
+    if api_key is not None:
+        Entrez.api_key=api_key
+    
+    #now set up a db file
+    conn=sqlite3.connect(cazydbpath)
+    atexit.register(conn.close)
+    conn.row_factory=sqlite3.Row
+    c=conn.cursor()
+
+    if refresh_all:
+        c.execute('''DROP TABLE lscripts''')
+        for pkldf in os.listdir(pkldf_fldrpath):
+            os.remove(os.path.join(pkldf_fldrpath,pkldf))
+    c.execute('''CREATE TABLE IF NOT EXISTS lscripts (scriptname text, pkl_ctime text, pkldfname text)''')
+
     outfamHT={}
     outfamHT['all']=[]
     for x,cze in enumerate(czes_):
