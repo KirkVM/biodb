@@ -1,7 +1,7 @@
 import argparse,os,sqlite3,datetime# sqlite3,os,sys,argparse,yaml
 from Bio import SeqIO,Entrez
-import cazydbscrapers
-import entrez_requests
+from . import cazydbscrapers
+from . import entrez_requests
 import sqlite3,atexit,re
 from Bio.SeqUtils.CheckSum import seguid
 import pickle,time
@@ -36,13 +36,19 @@ def grab_cazyseqs(ghfam,outfolder,dbname=None):
         print(f'adding/updating existing CAZYDATA table, size {cazydbsize}')
     except:
         #table does not exist yet
-        c.execute('''CREATE TABLE CAZYDATA (acc text, version text, scrapedate text, subfam text, extragbs text, ecs text, pdbids text)''')
+        c.execute('''CREATE TABLE CAZYDATA (acc text, version text, scrapedate text, \
+            subfam text, extragbs text, ecs text, pdbids text, uniprotids text)''')
     today=datetime.date.today()
     todaystr=f'{today.year}-{today.month}-{today.day}'
     accRE=re.compile("(.+)\.(\d+)")
     for cze in czes_:
         maingbacc=cze.gbids_[0]
-        acc,accvrsn=accRE.match(maingbacc).groups()
+        try:
+            acc,accvrsn=accRE.match(maingbacc).groups()
+        except:
+            print(f'no sequence version for {maingbacc}')
+            acc=maingbacc
+            accvrsn=None
         c.execute('''SELECT * FROM CAZYDATA WHERE acc = (?)''',(acc,))
         existingentries=c.fetchall()
         assert(len(existingentries))<=1, f"more than 1 entry exists for {acc}"
@@ -50,6 +56,7 @@ def grab_cazyseqs(ghfam,outfolder,dbname=None):
         extragbs=None
         ecs=None
         pdbids=None
+        uniprotids=None
         if cze.family!=None:
             subfam=cze.family
         if len(cze.gbids_)>1:
@@ -67,23 +74,57 @@ def grab_cazyseqs(ghfam,outfolder,dbname=None):
             for pdbid in cze.pdbids_:
                 pdbids+=f'{pdbid},'
             pdbids=pdbids[:-1]
-
+        if len(cze.uniprotids_)>0:
+            uniprotids=''
+            for uniprotid in cze.uniprotids_:
+                uniprotids+=f'{uniprotid},'
+            uniprotids=uniprotids[:-1]
 
         #now update entry if it's been over 1 month
         if len(existingentries)==0:
-            new_tuple=(acc,accvrsn,todaystr,subfam,extragbs,ecs,pdbids)
-            c.execute('''INSERT INTO CAZYDATA VALUES (?,?,?,?,?,?,?)''',new_tuple)
+            new_tuple=(acc,accvrsn,todaystr,subfam,extragbs,ecs,pdbids,uniprotids)
+            c.execute('''INSERT INTO CAZYDATA VALUES (?,?,?,?,?,?,?,?)''',new_tuple)
         else:
-            update_tuple=(accvrsn,todaystr,subfam,extragbs,ecs,pdbids,maingbacc)
+            update_tuple=(accvrsn,todaystr,subfam,extragbs,ecs,pdbids,uniprotids,acc)
             existingdate=datetime.date(*[int(x) for x in existingentries[0]['scrapedate'].split('-')])
             days_since_update=(today-existingdate).days
             if days_since_update>30:
                 c.execute('''UPDATE CAZYDATA SET version = (?), scrapedate = (?), subfam = (?), \
-                            extragbs = (?), ecs = (?), pdbids = (?) WHERE gbacc = (?)''',update_tuple)
+                            extragbs = (?), ecs = (?), pdbids = (?), uniprotids = (?) WHERE acc = (?)''',update_tuple)
     conn.commit()
     conn.close()
 
-def getprotein_gbsrs(dbfpath,email,api_key,refresh=False):
+def updatedb(c,acc,failcount):
+    today=datetime.date.today()
+    todaystr=f'{today.year}-{today.month}-{today.day}'
+    try:
+        sr=entrez_requests.getgbpsr(acc)
+        assert(sr.name==acc),"why doesn't sr.name==dlacc?"
+        accvrsn=sr.annotations['sequence_version']
+        try:
+            accvrsn=int(accvrsn)
+        except:
+            print(f'cannot get version # for {acc}')
+            accvrsn=None
+        checksum=seguid(sr.seq)
+        if failcount==0:
+            new_tuple=(acc,accvrsn,todaystr,checksum,pickle.dumps(sr),0)
+            c.execute('''INSERT INTO PROTEINGBS VALUES (?,?,?,?,?,?)''',new_tuple)
+        else:
+            update_tuple=(accvrsn,todaystr,checksum,pickle.dumps(sr),0,acc)
+            c.execute('''UPDATE PROTEINGBS SET version = (?), dldate = (?), checksum = (?), \
+                            pklgbsr = (?), failcount = (?) WHERE acc = (?)''',update_tuple)
+    except:
+        if failcount==0:
+            new_tuple=(acc,None,None,None,None,1)
+            c.execute('''INSERT INTO PROTEINGBS VALUES (?,?,?,?,?,?)''',new_tuple)
+        else:
+            update_tuple=(failcount+1,acc)
+            c.execute('''UPDATE PROTEINGBS SET failcount = (?) WHERE acc = (?)''',update_tuple)
+
+        print(f'could not download {acc}')
+
+def getprotein_gbsrs(dbfpath,email,api_key,refresh=False,retry_fails=False):
     Entrez.email=email
     Entrez.api_key=api_key
     conn=sqlite3.connect(dbfpath)
@@ -97,35 +138,31 @@ def getprotein_gbsrs(dbfpath,email,api_key,refresh=False):
         return "no db found"
     c.execute('''SELECT acc FROM CAZYDATA''')
     cazyaccs=[x['acc'] for x in c.fetchall()]
-    print(cazyaccs)
+    print(f'{len(cazyaccs)} entries in CAZYDATA table')
 
     c.execute('''CREATE TABLE IF NOT EXISTS PROTEINGBS (acc text, version text, \
                  dldate text, checksum text, pklgbsr glob, failcount int)''')
     c.execute('''SELECT acc FROM PROTEINGBS WHERE failcount=0''')
     cur_pgbaccs=[x['acc'] for x in c.fetchall()]
-    print(cur_pgbaccs)
+    print(f'{len(cur_pgbaccs)} existing (successful) entries in CAZYDATA table')
 
     dlaccs=list(set(cazyaccs).difference(cur_pgbaccs))
-    today=datetime.date.today()
-    todaystr=f'{today.year}-{today.month}-{today.day}'
-#    accRE=re.compile("(.+)\.(\d+)")
+    print(f'{len(dlaccs)} remaining CAZY seqs to pull')
     for snum,dlacc in enumerate(dlaccs):
-#        acc,accvrsn=accRE.match(dlacc).groups()
-        try:
-            sr=entrez_requests.getgbpsr(dlacc)
-            assert(sr.name==dlacc),"why doesn't sr.name==dlacc?"
-            accvrsn=sr.annotations['sequence_version']
-            checksum=seguid(sr.seq)
-            new_tuple=(dlacc,accvrsn,todaystr,checksum,pickle.dumps(sr),0)
-            c.execute('''INSERT INTO PROTEINGBS VALUES (?,?,?,?,?,?)''',new_tuple)
-        except:
-            new_tuple=(dlacc,None,None,None,None,1)
-            c.execute('''INSERT INTO PROTEINGBS VALUES (?,?,?,?,?,?)''',new_tuple)
-            print(f'could not download {dlacc}')
+        updatedb(c,dlacc,0)
         if snum>0 and snum%25==0:
             print(f'through {snum} sequences')
+            conn.commit()
             time.sleep(5)
-
+    if retry_fails:
+        c.execute('''SELECT * FROM PROTEINGBS WHERE failcount!=0''')
+        rtrows=c.fetchall()
+        for snum,rtrow in enumerate(rtrows):
+            updatedb(c,rtrow['acc'],rtrow['failcount'])
+            if snum>0 and snum%25==0:
+                print(f'through {snum} retry sequences')
+                conn.commit()
+                time.sleep(5)
 
     conn.commit()
     conn.close()
