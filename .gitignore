@@ -1,0 +1,13 @@
+*.pyc
+*.py~
+*~
+*.swp
+*.swo
+*.png
+*.svg
+*.pdf
+*.ai
+*.tab
+*.tar.gz
+.vscode
+__pycache__/
