@@ -12,69 +12,22 @@ def _getgbseqrec(gbid):
 	sr=SeqRecord(Seq(a[0]['TSeq_sequence'],IUPAC.protein),id=gbid,description=a[0]['TSeq_defline'])
 	return sr
 
-def pullgb_fromcazyobjs(czes_,email,cazydbpath,api_key=None):
+def getgbpsr(gbacc):
+	handle=Entrez.efetch(db="protein",id=gbacc,rettype="gb",retmode="text")
+#    print(handle)
+	sr=SeqIO.read(handle,"genbank")
+	return sr
+
+def getgbsrs(gbaccs,email,api_key,pause_scheme='default'):
+    """public call to ensure playing nice"""
     Entrez.email=email
     if api_key is not None:
         Entrez.api_key=api_key
-    
-    #now set up a db file
-    conn=sqlite3.connect(cazydbpath)
-    atexit.register(conn.close)
-    conn.row_factory=sqlite3.Row
-    c=conn.cursor()
-
-    if refresh_all:
-        c.execute('''DROP TABLE lscripts''')
-        for pkldf in os.listdir(pkldf_fldrpath):
-            os.remove(os.path.join(pkldf_fldrpath,pkldf))
-    c.execute('''CREATE TABLE IF NOT EXISTS lscripts (scriptname text, pkl_ctime text, pkldfname text)''')
-
-    outfamHT={}
-    outfamHT['all']=[]
-    for x,cze in enumerate(czes_):
-        if x%10==0: 
-            time.sleep(2)
-        if x%25==0: 
-            print('grabbed {0} seqs from GB'.format(x))
-            time.sleep(1)
-            if x%50==0:
-                time.sleep(2)
-                if x%100==0:
-                    time.sleep(10)
-        try:
-            gbid=cze.gbids_[0]
-            print(gbid)
-#          if len(cze.gbids_)>1:
-#               alt_gbid=cze.gbids[1]
-            sr=_getgbseqrec(gbid)
-            #now we add add'l stuff to id or description
-#           full_desc=sr.description
-            dbxrefs_=[]
-            if len(cze.gbids_)>1:
-                #full_desc+="|"+cze.gbids_[1]
-                extragbs_=cze.gbids_[1:]
-                for gbid in extragbs_:
-                    dbxrefs_.append("GB:{0}".format(gbid))
-            if len(cze.ecs_)>0:
-                for ec in cze.ecs_:
-                    dbxrefs_.append("EC:{0}".format(ec))
-            if len(cze.pdbids_)>0:
-                for pdbid in cze.pdbids_:
-                    #full_desc+="|"+pdbid
-                    dbxrefs_.append("PDB:{0}".format(pdbid))
-            if cze.family!=None:
-                #full_desc+="|SUBFAM"+cze.family
-                dbxrefs_.append("SUBFAM:{0}".format(cze.family))
-#           full_desc=sr.description
-            full_desc=sr.description
-            for dbxref in dbxrefs_:
-                full_desc+="|"+dbxref
-            newsr=SeqRecord(sr.seq,id=sr.id,description=full_desc)#sr.description,dbxrefs=dbxrefs_)
-            #fastasrs_.append(sr)
-            if cze.family is not None:
-                if not int(cze.family) in outfamHT.keys(): outfamHT[int(cze.family)]=[]
-                outfamHT[int(cze.family)].append(newsr)
-            outfamHT['all'].append(newsr)
-        except:
-            print('could not add {}'.format(cze.gbids_[0]))
-    return outfamHT
+    srs=[]
+    for x,gbacc in enumerate(gbaccs):
+        sr=_getgbpsr(gbacc)
+        srs.append(sr)
+        if pause_scheme=='default':
+            if x>0 and x%10==0:
+                time.sleep(5)
+    return srs
