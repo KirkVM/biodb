@@ -1,7 +1,6 @@
-import sqlite3,atexit,re,datetime
+import sqlite3,re,datetime
 from . import seqdbutils
 from ..scrapers import cazydbscrapers
-import sys
 
 def build_cazytable(ghfam,dbpath):
     """scrapes CAZY db for accession codes/annotations info, then downloads seqs through NCBI Entrez
@@ -16,19 +15,18 @@ def build_cazytable(ghfam,dbpath):
     """    
     conn=seqdbutils.gracefuldbopen(dbpath) 
     c=conn.cursor()
-    try:
-        c.execute('''SELECT COUNT (*) FROM CAZYDATA''')
-        cazydbsize=c.fetchone()[0]
-        print(f'adding/updating existing CAZYDATA table, size {cazydbsize}')
-    except:
-        #table does not exist yet
-        c.execute('''CREATE TABLE CAZYDATA (acc text, version text, scrapedate text, \
-            subfam text, extragbs text, ecs text, pdbids text, uniprotids text)''')
+#    try:
+#        c.execute('''SELECT COUNT (*) FROM CAZYSEQDATA''')
+#        cazydbsize=c.fetchone()[0]
 
+    c.execute('''CREATE TABLE IF NOT EXISTS CAZYSEQDATA (acc text, version text, scrapedate text, \
+                subfam text, extragbs text, ecs text, pdbids text, uniprotids text)''')
     print('starting CAZY scrape')
     czes_=cazydbscrapers.scrape_cazyfam(f'{ghfam}')
     assert(len(czes_)>0), f"Unable to scrape CAZY for selection {ghfam}"
     print(f'found {len(czes_)} entries. building DB')
+    add_count=0
+    update_count=0
     today=datetime.date.today()
     todaystr=f'{today.year}-{today.month}-{today.day}'
     accRE=re.compile("(.+)\.(\d+)")
@@ -40,7 +38,7 @@ def build_cazytable(ghfam,dbpath):
             print(f'no sequence version for {maingbacc}')
             acc=maingbacc
             accvrsn=None
-        c.execute('''SELECT * FROM CAZYDATA WHERE acc = (?)''',(acc,))
+        c.execute('''SELECT * FROM CAZYSEQDATA WHERE acc = (?)''',(acc,))
         existingentries=c.fetchall()
         assert(len(existingentries))<=1, f"more than 1 entry exists for {acc}"
         subfam=None
@@ -74,13 +72,16 @@ def build_cazytable(ghfam,dbpath):
         #now update entry if it's been over 1 month
         if len(existingentries)==0:
             new_tuple=(acc,accvrsn,todaystr,subfam,extragbs,ecs,pdbids,uniprotids)
-            c.execute('''INSERT INTO CAZYDATA VALUES (?,?,?,?,?,?,?,?)''',new_tuple)
+            c.execute('''INSERT INTO CAZYSEQDATA VALUES (?,?,?,?,?,?,?,?)''',new_tuple)
+            add_count+=1
         else:
             update_tuple=(accvrsn,todaystr,subfam,extragbs,ecs,pdbids,uniprotids,acc)
             existingdate=datetime.date(*[int(x) for x in existingentries[0]['scrapedate'].split('-')])
             days_since_update=(today-existingdate).days
             if days_since_update>30:
-                c.execute('''UPDATE CAZYDATA SET version = (?), scrapedate = (?), subfam = (?), \
+                c.execute('''UPDATE CAZYSEQDATA SET version = (?), scrapedate = (?), subfam = (?), \
                             extragbs = (?), ecs = (?), pdbids = (?), uniprotids = (?) WHERE acc = (?)''',update_tuple)
+                update_count+=1
     conn.commit()
     conn.close()
+    print(f'added {add_count} entries, updated {update_count} entries')

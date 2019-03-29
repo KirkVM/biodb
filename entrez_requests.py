@@ -13,10 +13,13 @@ def _getgbseqrec(gbid):
 	return sr
 
 def getgbpsr(gbacc):
-	handle=Entrez.efetch(db="protein",id=gbacc,rettype="gb",retmode="text")
-#    print(handle)
-	sr=SeqIO.read(handle,"genbank")
-	return sr
+    try:
+        handle=Entrez.efetch(db="protein",id=gbacc,rettype="gb",retmode="text")
+        sr=SeqIO.read(handle,"genbank")
+    except:
+        sr=None
+    return sr
+
 
 def getgbsrs(gbaccs,email,api_key,pause_scheme='default'):
     """public call to ensure playing nice"""
