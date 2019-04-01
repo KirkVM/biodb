@@ -2,7 +2,7 @@ import time,datetime,pickle
 from Bio import Entrez
 from Bio.SeqUtils.CheckSum import seguid
 from . import seqdbutils
-from .. import entrez_requests
+from requesters import entrez_requests
 
 def updatedb(c,acc,failcount):
     today=datetime.date.today()
@@ -43,7 +43,7 @@ def get_tblaccs(cursor):
         print('no CAZYSEQDATA table')
     return accs
 
-def build_proteingbtable(dbpath,email,api_key,refresh=False,retry_fails=False):
+def build_proteingbtable(dbpath,email,api_key,refresh=False,retry_fails=False,stopat=None):
     Entrez.email=email
     Entrez.api_key=api_key
     conn=seqdbutils.gracefuldbopen(dbpath) 
@@ -63,6 +63,8 @@ def build_proteingbtable(dbpath,email,api_key,refresh=False,retry_fails=False):
             print(f'through {snum} sequences')
             conn.commit()
             time.sleep(5)
+        if stopat is not None and snum==stopat:
+            break
     if retry_fails:
         c.execute('''SELECT * FROM PROTEINGBS WHERE failcount!=0''')
         rtrows=c.fetchall()
@@ -75,3 +77,22 @@ def build_proteingbtable(dbpath,email,api_key,refresh=False,retry_fails=False):
 
     conn.commit()
     conn.close()
+
+
+def extractsrs(dbpath,format='fasta'):
+    """returns a file containing all the sequence files in PROTEINGBS table"""
+    conn=seqdbutils.gracefuldbopen(dbpath)
+    c=conn.cursor()
+    c.execute('''SELECT * FROM PROTEINGBS WHERE acc NOT NULL''')
+    allrows=c.fetchall()
+    print(f'found {len(allrows)} non-null entries')
+    missingsr_accs=[]
+    srs=[]
+    for row in allrows:
+        pklgbsr=row['pklgbsr']
+        if pklgbsr is not None:
+            srs.append(pickle.loads(row['pklgbsr']))
+        else:
+            missingsr_accs.append(row['acc'])
+    conn.close()
+    return srs

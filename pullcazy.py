@@ -3,7 +3,6 @@ from Bio import SeqIO,Entrez
 from . import cazydbscrapers
 from . import entrez_requests
 import sqlite3,atexit,re
-from Bio.SeqUtils.CheckSum import seguid
 import pickle,time
 
 def updatedb(c,acc,failcount):

@@ -1,0 +1,14 @@
+setup.py
+ghseqdb/__init__.py
+ghseqdb/cazytable.py
+ghseqdb/curatedtable.py
+ghseqdb/gbsrtables.py
+ghseqdb/seqdbutils.py
+kbiodb.egg-info/PKG-INFO
+kbiodb.egg-info/SOURCES.txt
+kbiodb.egg-info/dependency_links.txt
+kbiodb.egg-info/top_level.txt
+requesters/entrez_requests.py
+scrapers/cazydbscrapers.py
+scrapers/jgikools.py
+scrapers/ncbikools.py

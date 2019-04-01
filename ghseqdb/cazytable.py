@@ -1,6 +1,6 @@
 import sqlite3,re,datetime
 from . import seqdbutils
-from ..scrapers import cazydbscrapers
+from scrapers import cazydbscrapers
 
 def build_cazytable(ghfam,dbpath):
     """scrapes CAZY db for accession codes/annotations info, then downloads seqs through NCBI Entrez

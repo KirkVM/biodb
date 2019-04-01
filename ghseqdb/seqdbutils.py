@@ -14,6 +14,7 @@ def gracefuldbopen(dbpath):
     except:
         raise Exception("could not connect to db")
 
+
 def table_exists(tblname,conn,fieldnames=None):
     try:
         cursor=conn.execute('''FROM (?) SELECT *''',(tblname,))
