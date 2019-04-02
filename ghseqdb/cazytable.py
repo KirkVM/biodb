@@ -28,7 +28,7 @@ def build_cazytable(ghfam,dbpath):
     add_count=0
     update_count=0
     today=datetime.date.today()
-    todaystr=f'{today.year}-{today.month}-{today.day}'
+    todaystr=f'{today.year}-{today.month:02d}-{today.day:02d}'
     accRE=re.compile("(.+)\.(\d+)")
     for cze in czes_:
         maingbacc=cze.gbids_[0]

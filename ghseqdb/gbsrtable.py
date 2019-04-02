@@ -6,7 +6,7 @@ from requesters import entrez_requests
 
 def updatedb(c,acc,failcount):
     today=datetime.date.today()
-    todaystr=f'{today.year}-{today.month}-{today.day}'
+    todaystr=f'{today.year}-{today.month:02d}-{today.day:02d}'
     sr=entrez_requests.getgbpsr(acc)
     if sr is not None:
         assert(sr.name==acc),"why doesn't sr.name==dlacc?"
@@ -16,21 +16,22 @@ def updatedb(c,acc,failcount):
         except:
             print(f'cannot get version # for {acc}')
             accvrsn=None
-        checksum=seguid(sr.seq)
+        seq_checksum=seguid(sr.seq)
+        sr_checksum=seguid(sr)
         if failcount==0:
-            new_tuple=(acc,accvrsn,todaystr,checksum,pickle.dumps(sr),0)
-            c.execute('''INSERT INTO PROTEINGBS VALUES (?,?,?,?,?,?)''',new_tuple)
+            new_tuple=(acc,accvrsn,todaystr,todaystr,seq_checksum,sr_checksum,pickle.dumps(sr),0)
+            c.execute('''INSERT INTO PROTEINGBS VALUES (?,?,?,?,?,?,?,?)''',new_tuple)
         else:
-            update_tuple=(accvrsn,todaystr,checksum,pickle.dumps(sr),0,acc)
-            c.execute('''UPDATE PROTEINGBS SET version = (?), dldate = (?), checksum = (?), \
-                            pklgbsr = (?), failcount = (?) WHERE acc = (?)''',update_tuple)
+            update_tuple=(accvrsn,todaystr,todaystr,seq_checksum,sr_checksum,pickle.dumps(sr),0,acc)
+            c.execute('''UPDATE PROTEINGBS SET version = (?), ncbiscan_date = (?), modify_date = (?), seq_checksum = (?), \
+                            sr_checksum = (?), pklgbsr = (?), failcount = (?) WHERE acc = (?)''',update_tuple)
     else:
         if failcount==0:
-            new_tuple=(acc,None,None,None,None,1)
-            c.execute('''INSERT INTO PROTEINGBS VALUES (?,?,?,?,?,?)''',new_tuple)
+            new_tuple=(acc,None,todaystr,None,None,None,None,1)
+            c.execute('''INSERT INTO PROTEINGBS VALUES (?,?,?,?,?,?,?,?)''',new_tuple)
         else:
-            update_tuple=(failcount+1,acc)
-            c.execute('''UPDATE PROTEINGBS SET failcount = (?) WHERE acc = (?)''',update_tuple)
+            update_tuple=(failcount+1,todaystr,acc)
+            c.execute('''UPDATE PROTEINGBS SET failcount = (?), ncbiscan_date = (?) WHERE acc = (?)''',update_tuple)
         print(f'could not download {acc}')
 
 def get_tblaccs(cursor):
@@ -48,12 +49,12 @@ def build_proteingbtable(dbpath,email,api_key,refresh=False,retry_fails=False,st
     Entrez.api_key=api_key
     conn=seqdbutils.gracefuldbopen(dbpath) 
     c=conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS PROTEINGBS (acc text, version text, \
-                 dldate text, checksum text, pklgbsr glob, failcount int)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS PROTEINGBS (acc text, version text, ncbiscan_date text,\
+                 modify_date text, seq_checksum text, sr_checksum, pklgbsr glob, failcount int)''')
     c.execute('''SELECT acc FROM PROTEINGBS WHERE failcount=0''')
     cur_pgbaccs=[x['acc'] for x in c.fetchall()]
     accs2find=get_tblaccs(c) 
-    print(f'{len(cur_pgbaccs)} existing (successful) entries in CAZYDATA table')
+    print(f'{len(cur_pgbaccs)} existing (successful) entries in PROTEINGBS table')
     dlaccs=list(set(accs2find).difference(cur_pgbaccs))
 
     print(f'{len(dlaccs)} remaining seqs to pull')
