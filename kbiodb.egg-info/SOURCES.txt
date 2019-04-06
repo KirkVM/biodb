@@ -3,7 +3,7 @@ ghseqdb/__init__.py
 ghseqdb/cazytable.py
 ghseqdb/cctable.py
 ghseqdb/curatedtable.py
-ghseqdb/gbsrtable.py
+ghseqdb/pgbtable.py
 ghseqdb/seqdbutils.py
 kbiodb.egg-info/PKG-INFO
 kbiodb.egg-info/SOURCES.txt

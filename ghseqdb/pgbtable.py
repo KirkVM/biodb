@@ -8,8 +8,15 @@ def updatedb(c,acc,failcount):
     today=datetime.date.today()
     todaystr=f'{today.year}-{today.month:02d}-{today.day:02d}'
     sr=entrez_requests.getgbpsr(acc)
-    if sr is not None:
-        assert(sr.name==acc),"why doesn't sr.name==dlacc?"
+    goodsr=True
+    if sr is None: 
+        print(f'could not download {acc}')
+        goodsr=False
+    elif sr.name!=acc:
+        print(f"sr.name {sr.name} does not match acc {acc}. Skipping.")
+        print(f"sr.id= {sr.id}, seqlen= {len(sr.seq)}.")
+        goodsr=False
+    if goodsr:
         try:
             accvrsn=sr.annotations['sequence_version']
             accvrsn=int(accvrsn)
@@ -32,7 +39,6 @@ def updatedb(c,acc,failcount):
         else:
             update_tuple=(failcount+1,todaystr,acc)
             c.execute('''UPDATE PROTEINGBS SET failcount = (?), ncbiscan_date = (?) WHERE acc = (?)''',update_tuple)
-        print(f'could not download {acc}')
 
 def get_tblaccs(cursor):
     accs=[]
@@ -51,7 +57,7 @@ def build_proteingbtable(dbpath,email,api_key,refresh=False,retry_fails=False,st
     c=conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS PROTEINGBS (acc text, version text, ncbiscan_date text,\
                  modify_date text, seq_checksum text, sr_checksum, pklgbsr glob, failcount int)''')
-    c.execute('''SELECT acc FROM PROTEINGBS WHERE failcount=0''')
+    c.execute('''SELECT acc FROM PROTEINGBS''')
     cur_pgbaccs=[x['acc'] for x in c.fetchall()]
     accs2find=get_tblaccs(c) 
     print(f'{len(cur_pgbaccs)} existing (successful) entries in PROTEINGBS table')

@@ -1,4 +1,4 @@
-import re,pickle,os
+import re,pickle,os,sys
 import numpy as np
 from kmslib.hmmerkools import hmmsearchparser
 from . import seqdbutils
@@ -73,14 +73,18 @@ class CCBounder:
     def __init__(self,dpm,seqlen,hmmsize,conf_envfrac=0.9,extrange=0.26):
         self.ntrangeprob=NTRangeProb(dpm,seqlen,hmmsize,conf_envfrac,extrange)
         self.ctrangeprob=CTRangeProb(dpm,seqlen,hmmsize,conf_envfrac,extrange)
-    def get_seqntccbound(self):
-        return self.ntrangeprob.seq_ccbound
-    def get_seqctccbound(self):
-        return self.ctrangeprob.seq_ccbound
+        self.ccseqstart=self.ntrangeprob.seq_ccbound
+        self.ccseqstop=self.ctrangeprob.seq_ccbound
+        self.nthmm_envfrac=1.0- (self.ntrangeprob.hmm_ccbound-1)/hmmsize
+        self.cthmm_envfrac= self.ctrangeprob.hmm_ccbound/hmmsize
+    def update(self,curatedEA):
+        pass
+        #update
 
 #    def get_boundary(self):
 #        pass
 
+#TODO- addin a per-GH yaml file with appropriate settings for conf_envfrac etc.
 def build_cctable(dbpath,hmmsearchfpath,pfamcode):#,seqfpath,seqformat='fasta'):
     hsrp=hmmsearchparser.HMMERSearchResParser()
     hsrp.file_read(hmmsearchfpath)
@@ -108,7 +112,8 @@ def build_cctable(dbpath,hmmsearchfpath,pfamcode):#,seqfpath,seqformat='fasta'):
     absent_entries=list(set(pgbsraccs).difference(filteredHT.keys()) )
     print(f'{len(absent_entries)} entries in PROTEINGBS but not {os.path.basename(hmmsearchfpath)}')
     c.execute('''CREATE TABLE IF NOT EXISTS CCDATA (acc text, version text, pfamcode text,pfamvrsn int,\
-                seq_checksum, hmmsfname text, hmmsf_mtime int, spm glob, ccb glob, ccstart int, ccstop int)''')
+                seq_checksum, hmmsfname text, hmmsf_mtime int, spm glob, ccb glob, ccstart int, ccstop int,
+                ntenvfrac REAL, ctenvfrac REAL, verified_status text)''')
     #seq_checksum included so could compare from PROTEINGBS table perspective whether need to re-run hmmsearch 
     c.execute('''SELECT acc FROM CCDATA''')
     #find accs that need to be added-
@@ -130,12 +135,45 @@ def build_cctable(dbpath,hmmsearchfpath,pfamcode):#,seqfpath,seqformat='fasta'):
         gbdbentry=c.fetchone()
         seqlen=len(pickle.loads(gbdbentry['pklgbsr']).seq)
         ccbounder=CCBounder(spm.dpms_[0],seqlen,spm.psize)
+
         new_tuple=(pacc,pvrsn,pfamcode,spm.paccvrsn,gbdbentry['seq_checksum'],os.path.basename(hmmsearchfpath),\
-                   hmmsfile_mtime,pickle.dumps(spm),pickle.dumps(ccbounder),ccbounder.ntrangeprob.seq_ccbound,\
-                   ccbounder.ntrangeprob.seq_ccbound)
-        print(ccbounder.ntrangeprob.seq_ccbound,ccbounder.ctrangeprob.seq_ccbound)
-        c.execute('''INSERT INTO CCDATA VALUES (?,?,?,?,?,?,?,?,?,?,?)''',new_tuple)
+                   hmmsfile_mtime,pickle.dumps(spm),pickle.dumps(ccbounder),int(ccbounder.ccseqstart),int(ccbounder.ccseqstop),\
+                   ccbounder.nthmm_envfrac,ccbounder.cthmm_envfrac,"unknown")
+#        print(acc,ccbounder.ccseqstart,ccbounder.ccseqstop,ccbounder.nthmm_envfrac,ccbounder.cthmm_envfrac)
+        c.execute('''INSERT INTO CCDATA VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',new_tuple)
         ##ADD something that indicates coverage at start???
     conn.commit()
     conn.close()
     #ccvals=find_motifalign(my_motif)
+
+
+def extractsrs_cc(dbpath,format='fasta'):
+    """returns a file containing all the sequence files in PROTEINGBS table"""
+    conn=seqdbutils.gracefuldbopen(dbpath)
+    c=conn.cursor()
+    c.execute('''SELECT COUNT (*) FROM CCDATA''')
+    num_ccrows=c.fetchone()[0]
+    if num_ccrows<1:
+        conn.close()
+        print('no table named CCDATA')
+        sys.exit()
+    c.execute('''SELECT COUNT (*) FROM PROTEINGBS''')
+    num_pgbrows=c.fetchone()[0]
+    if num_pgbrows<1:
+        conn.close()
+        print('no table named PROTEINGBS')
+        sys.exit()
+ 
+    c.execute('''SELECT PROTEINGBS.acc,pklgbsr,ccstart,ccstop,ntenvfrac,ctenvfrac FROM PROTEINGBS INNER JOIN CCDATA ON PROTEINGBS.acc=CCDATA.acc''')
+    allrows=c.fetchall()
+    print(f'found {len(allrows)} non-null entries')
+    outsrs=[]
+    for gbrow in allrows:
+        if gbrow['ntenvfrac']>0.8 and gbrow['ctenvfrac']>0.8:
+            gbsr=pickle.loads(gbrow['pklgbsr'])
+            newsr=gbsr[gbrow['ccstart']:gbrow['ccstop']]
+            newsr.id=gbrow['acc']
+            outsrs.append(newsr)
+    
+    conn.close()
+    return outsrs
