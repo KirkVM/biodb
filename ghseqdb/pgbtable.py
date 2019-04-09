@@ -59,7 +59,7 @@ def build_proteingbtable(dbpath,email,api_key,refresh=False,retry_fails=False,st
                  modify_date text, seq_checksum text, sr_checksum, pklgbsr glob, failcount int)''')
     c.execute('''SELECT acc FROM PROTEINGBS''')
     cur_pgbaccs=[x['acc'] for x in c.fetchall()]
-    accs2find=get_tblaccs(c) 
+    accs2find=get_tblaccs(c)  #replace this with seqdbutils.check_table_exists and then a select
     print(f'{len(cur_pgbaccs)} existing (successful) entries in PROTEINGBS table')
     dlaccs=list(set(accs2find).difference(cur_pgbaccs))
 

@@ -28,19 +28,9 @@ def build_curatedxtaltable(dbpath,xtalxlfpath,sheet_name="Sheet1"):
 
 def mergein_predictedccdata(dbpath):
     conn=seqdbutils.gracefuldbopen(dbpath)
+    seqdbutils.check_tables_exist(conn,['CURATEDXTALS','CCDATA'])
     c=conn.cursor()
-    c.execute('''SELECT COUNT (*) FROM CURATEDXTALS''')
-    num_curatedrows=c.fetchone()[0]
-    if num_curatedrows<1:
-        conn.close()
-        print('no table named CURATEDXTALS')
-        sys.exit()
-    c.execute('''SELECT COUNT (*) FROM CCDATA''')
-    num_ccrows=c.fetchone()[0]
-    if num_ccrows<1:
-        conn.close()
-        print('no table named CCDATA')
-        sys.exit()
+
     #c.execute('''SELECT CCDATA.acc,CCDATA.ccb,CCDATA.ccstart,CCDATA.ccstop,CURATEDXTALS.ntccpos,CURATEDXTALS.ctccpos FROM CCDATA INNER JOIN CURATEDXTALS ON CCDATA.acc = CURATEDXTALS.acc''')
     c.execute('''SELECT * FROM CCDATA INNER JOIN CURATEDXTALS,PROTEINGBS ON CCDATA.acc = CURATEDXTALS.acc''')
     cxccs=c.fetchall()

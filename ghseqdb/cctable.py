@@ -11,11 +11,11 @@ class EndRangeProb:
         self.initial_logistic=None
         self.updated_prob=None
         self.env_frac_remaining=None
-        self.extrange=int(0.26*hmmsize)
+        self.extrange=int(extrange*hmmsize)
         self.envconf_term=1.0-conf_envfrac
     def build_initial_logistic(self):
         gamma=1
-        fx=-7.5*self.envfractions*np.exp(1-self.env_frac_remaining)
+        fx=-5*self.envfractions*np.exp(1-self.env_frac_remaining)
         for x in range(len(self.envfractions)):
             if self.envfractions[x]<=- self.envconf_term*self.env_frac_remaining:
                 fx[x]+=-50*(self.envfractions[x]+ self.envconf_term*self.env_frac_remaining)
@@ -70,7 +70,7 @@ class CTRangeProb(EndRangeProb):
         self.hmm_ccbound=self.hmmpositions[ccstop_index]
 
 class CCBounder:
-    def __init__(self,dpm,seqlen,hmmsize,conf_envfrac=0.9,extrange=0.26):
+    def __init__(self,dpm,seqlen,hmmsize,conf_envfrac=0.9,extrange=0.3):
         self.ntrangeprob=NTRangeProb(dpm,seqlen,hmmsize,conf_envfrac,extrange)
         self.ctrangeprob=CTRangeProb(dpm,seqlen,hmmsize,conf_envfrac,extrange)
         self.ccseqstart=self.ntrangeprob.seq_ccbound
@@ -150,20 +150,9 @@ def build_cctable(dbpath,hmmsearchfpath,pfamcode):#,seqfpath,seqformat='fasta'):
 def extractsrs_cc(dbpath,format='fasta'):
     """returns a file containing all the sequence files in PROTEINGBS table"""
     conn=seqdbutils.gracefuldbopen(dbpath)
+    seqdbutils.check_tables_exist(conn,['CCDATA','PROTEINGBS'])
+    
     c=conn.cursor()
-    c.execute('''SELECT COUNT (*) FROM CCDATA''')
-    num_ccrows=c.fetchone()[0]
-    if num_ccrows<1:
-        conn.close()
-        print('no table named CCDATA')
-        sys.exit()
-    c.execute('''SELECT COUNT (*) FROM PROTEINGBS''')
-    num_pgbrows=c.fetchone()[0]
-    if num_pgbrows<1:
-        conn.close()
-        print('no table named PROTEINGBS')
-        sys.exit()
- 
     c.execute('''SELECT PROTEINGBS.acc,pklgbsr,ccstart,ccstop,ntenvfrac,ctenvfrac FROM PROTEINGBS INNER JOIN CCDATA ON PROTEINGBS.acc=CCDATA.acc''')
     allrows=c.fetchall()
     print(f'found {len(allrows)} non-null entries')

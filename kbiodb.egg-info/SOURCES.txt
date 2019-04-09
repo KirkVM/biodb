@@ -1,10 +1,12 @@
 setup.py
 ghseqdb/__init__.py
 ghseqdb/cazytable.py
+ghseqdb/ccrefiner.py
 ghseqdb/cctable.py
 ghseqdb/curatedtable.py
 ghseqdb/pgbtable.py
 ghseqdb/seqdbutils.py
+ghseqdb/xtalstable.py
 kbiodb.egg-info/PKG-INFO
 kbiodb.egg-info/SOURCES.txt
 kbiodb.egg-info/dependency_links.txt
