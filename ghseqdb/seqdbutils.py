@@ -32,6 +32,8 @@ def check_tables_exist(conn,tblnames):
             c.execute('''SELECT COUNT (*) FROM CURATEDXTALS''')
         elif tblname=='CAZYSEQDATA':
             c.execute('''SELECT COUNT (*) FROM CAZYSEQDATA''')
+        elif tblname=='XTALS':
+            c.execute('''SELECT COUNT (*) FROM XTALS''')
         numrows=c.fetchone()[0]
         if numrows<1:
             conn.close()

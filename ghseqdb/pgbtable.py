@@ -13,9 +13,12 @@ def updatedb(c,acc,failcount):
         print(f'could not download {acc}')
         goodsr=False
     elif sr.name!=acc:
-        print(f"sr.name {sr.name} does not match acc {acc}. Skipping.")
-        print(f"sr.id= {sr.id}, seqlen= {len(sr.seq)}.")
-        goodsr=False
+        print(f"sr.name {sr.name} does not match acc {acc}. Checking sr.id...")
+        if acc in sr.id:
+            print(f"forgiven... acc= {acc}, sr.id= {sr.id}, seqlen= {len(sr.seq)}.")
+        else:
+            print(f"no good. sr.id= {sr.id}, seqlen= {len(sr.seq)}. skipping...")
+            goodsr=False
     if goodsr:
         try:
             accvrsn=sr.annotations['sequence_version']

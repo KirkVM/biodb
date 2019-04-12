@@ -62,17 +62,18 @@ def add_obsoletevalues(dbpathstr):
     c=conn.cursor()
     pdbl=PDBList()
     obsolete_list=pdbl.get_all_obsolete()
-#    for pdbname in obsolete_list:
-    
-    c.executemany('''SELECT acc FROM XTALS WHERE acc=(?)''',obsolete_list)
-    obsrows=c.fetchall()
-    for obsrow in obsrows:
-        print(obsrow['acc'])
+    for ocode in obsolete_list:
+        c.execute('''SELECT * FROM XTALS WHERE pdbid=(?)''',(ocode,))
+        obsrow=c.fetchone()
+        if obsrow is not None:
+            srcdb=obsrow['srcdb']
+            srcacc=obsrow['acc']
+            print(f'PDB {ocode} (acc-{srcacc}) from {srcdb} marked obsolete')
+            c.execute('''UPDATE XTALS SET obsolete=(?) WHERE pdbid=(?)''',(1,ocode))
+    conn.commit()
     conn.close()
-#    xtaldirpath=Path(dbpath).parent / 'Xtals'
-#    if not xtaldirpath.exists():
-#        os.mkdir(xtaldirpath)
- 
+
+
 #how to get sequence from a structure-
 #from Bio.PDB import MMCIFParser,PPBuilder
 #parser=MMCIFParser()
