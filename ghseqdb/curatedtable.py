@@ -7,12 +7,22 @@ from . import seqdbutils
 def check_cxstatus(c,xrow,xtalfile_mtime):
     c.execute('''SELECT * FROM CURATEDXTALS WHERE pdbid=(?)''',(xrow['curated_pdb'],))
     prevrow=c.fetchone()
+    #print(prevrow['alt_startnum'].isnull(),xrow['alt_startnum'].isnull())
+    if xrow['flagged']: #not a confident assessment, skip for now
+        print('flagged',xrow['gb_accession'],'- passing')
+        if prevrow is not None:
+            print(f'Due to flagged status, dropping existing entry {xrow["curated_pdb"]}')
+            return 'delete'
+        else:
+            return 'skip'
+
     if prevrow is None:
         return 'absent'
     else:
         if (prevrow['ntccpos']==xrow['cc_startnum'] and prevrow['ctccpos']==xrow['cc_stopnum'] and
             prevrow['ntccseq']==xrow['cc_startseq'] and prevrow['ctccseq']==xrow['cc_stopseq'] and
-            prevrow['acc']==xrow['gb_accession'] and prevrow['cazypdblist']==xrow['PDBS']):
+            prevrow['acc']==xrow['gb_accession'] and prevrow['cazypdblist']==xrow['PDBS'] and
+            prevrow['enable_fuzzy']==xrow['enable_fuzzy']):
             return 'exists'
         else:
             assert (xtalfile_mtime>prevrow['xtalf_mtime']),"replacing with val from older excel file?"
@@ -32,11 +42,11 @@ def align_proteingbs_seq(conn,xtalsdbpath):
     mmcparser=MMCIFParser()
     ppb=PPBuilder()
     
-    core_start=None
-    core_stop=None
     c.execute('''SELECT * FROM CURATEDXTALS''')
     curatedrows=c.fetchall()
     for curatedrow in curatedrows:
+        core_start=None
+        core_stop=None
         c.execute('''SELECT * FROM PROTEINGBS WHERE acc=(?)''',(curatedrow['acc'],))
         pgbrow=c.fetchone()
         if (pgbrow['seq_checksum']==curatedrow['pgbsr_seqchecksum'] and \
@@ -78,14 +88,15 @@ def align_proteingbs_seq(conn,xtalsdbpath):
                 xtalcoreseqstr=xstrmatch.group(1)
                 for strtcand in range(0,len(pgbseq)-inter_min ):
                     for stopcand in range(strtcand+inter_min,strtcand+inter_max):
+                        #stopcand=min(stopcand,len(pgbseq))
                         sm=difflib.SequenceMatcher(a=xtalcoreseqstr,b=str(pgbseq),autojunk=False)
                         if sm.ratio()>max_ratio:
                             core_start=strtcand
                             core_stop=stopcand-1
                 print(f'-->found {curatedrow["pdbid"]} by matching xtalpeptide to genbank sequence {curatedrow["acc"]}:\
                         ({core_start},{core_stop})')
-            else:
-                print('---->Now resorting to fuzzy matching for {curatdrow["pdbid"]}')
+            elif curatedrow['enable_fuzzy']:
+                print(f'---->Now resorting to fuzzy matching for {curatedrow["pdbid"]}')
                 cstarts=[]
                 cstops=[]
                 for strtcand in range(0,len(pgbseq)-inter_min+1 ):
@@ -113,20 +124,33 @@ def align_proteingbs_seq(conn,xtalsdbpath):
                                          ({core_start},{core_stop})')
                                 if foundit:
                                     break
+            else:
+                print('******************* * * * *  * * *  *  *   *   * * *    *   *   *  **  * *    *********************')
+                print(f'-------could not match. Consider setting enable_fuzzy column to yes for {curatedrow["pdbid"]}-------')
+                print('************  *  * *  *  * *  *  * *    *   *   * *   * *     *    *   *  * *  *******************')
         if core_start is not None and core_stop is not None:
+            #do a fix that nudges to start or stop if w.in 3 of first/last position-
+            if core_start<3:
+                core_start=0
+            if core_stop>len(pgbseq)-3:
+                core_stop=len(pgbseq)-1
             update_tuple=(core_start,core_stop,pgbrow['seq_checksum'],curatedrow['acc'])
             c.execute('''UPDATE CURATEDXTALS SET pgbsr_ccstart=(?), pgbsr_ccstop=(?), pgbsr_seqchecksum=(?) WHERE acc=(?)''',\
                        update_tuple)
         else:
-            print(f'****FAILED TO FIND CORE START,STOP FOR {curatedrow["pdbid"]} ({curatedrow["acc"]})*****')
+            print(f'+++++------FAILED TO FIND CORE START,STOP FOR {curatedrow["pdbid"]} ({curatedrow["acc"]})------++++++')
     xdbconn.close()
-
 
 
 
 
 def build_curatedxtaltable(dbpathstr,xtalxlfpath,sheet_name="Sheet1",xtalsdb_relpath='up1',xtalsdb_name='EDATA.sql'):
     xtaldf=pd.read_excel(xtalxlfpath,sheet_name=sheet_name,dtype={'flagged':str})
+    xtaldf['enable_fuzzy'].fillna('no',inplace=True)
+    xtaldf['flagged'].fillna('no',inplace=True)
+    xtaldf.replace(to_replace={'enable_fuzzy':{'yes':1,'no':0},'flagged':{'yes':1,'no':0}},inplace=True)
+    xtaldf['enable_fuzzy']=xtaldf['enable_fuzzy'].astype(int)
+    xtaldf['flagged']=xtaldf['flagged'].astype(int)
     xtalfname=os.path.basename(xtalxlfpath)
     xtalfile_mtime=os.stat(xtalxlfpath).st_mtime
     dbpath=Path(dbpathstr)
@@ -134,22 +158,21 @@ def build_curatedxtaltable(dbpathstr,xtalxlfpath,sheet_name="Sheet1",xtalsdb_rel
     c=conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS CURATEDXTALS (acc text, xtalfname text, xtalf_mtime int, \
                 cazypdblist text, pdbid text, pdbchain text, ntccpos int, ctccpos int, ntccseq text, ctccseq text,\
-                pgbsr_ccstart int, pgbsr_ccstop int, pgbsr_seqchecksum text)''')
+                enable_fuzzy int, pgbsr_ccstart int, pgbsr_ccstop int, pgbsr_seqchecksum text)''')
     for _,xrow in xtaldf.dropna(subset=['curated_pdb']).iterrows():
         assert(type(xrow['cc_startnum']) in (float,int)),"cc_startnum type not numeric"
-        if str(xrow['flagged']).lower()=='yes': #not a confident assessment, skip for now
-            print('flagged',xrow['gb_accession'],'- passing')
-            continue
         entry_status=check_cxstatus(c,xrow,xtalfile_mtime)
-        if entry_status=='update_required': #drop so can replace
-            c.execute('''DELETE FROM CURATEDXTALS WHERE pdbid=(?)''',(xrow['curated_pdb'],)) 
-        if entry_status in ['absent','update_required']: #entry
+        if entry_status=='skip':
+            continue
+        if entry_status in ['update_required','delete']: #drop 
+            c.execute('''DELETE FROM CURATEDXTALS WHERE pdbid=(?)''',(xrow['curated_pdb'],))
+        if entry_status in ['absent','update_required']: #adding or replacing
             new_tuple=(xrow['gb_accession'],xtalfname,xtalfile_mtime,xrow['PDBS'],xrow['curated_pdb'],\
                  xrow['chain'],int(xrow['cc_startnum']),int(xrow['cc_stopnum']),xrow['cc_startseq'],xrow['cc_stopseq'],\
-                 None,None,None)
-            c.execute('''INSERT INTO CURATEDXTALS VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',new_tuple)
-        else:
-            assert(entry_status=='exists'),'existing entry_status unclear' #otherwise skip since ok already
+                 xrow['enable_fuzzy'],None,None,None)
+            c.execute('''INSERT INTO CURATEDXTALS VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',new_tuple)
+#        else:
+#            assert(entry_status=='exists'),'existing entry_status unclear' #otherwise skip since ok already
     #now let's match up start/stops with sequences in database-
     xtalsdbpath=None
     if xtalsdb_relpath=='up1':
