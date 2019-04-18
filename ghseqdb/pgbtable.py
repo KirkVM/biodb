@@ -89,9 +89,10 @@ def build_proteingbtable(dbpath,email,api_key,refresh=False,retry_fails=False,st
     conn.close()
 
 
-def extractsrs(dbpath,format='fasta'):
+def extractsrs(dbpathstr,format='fasta',resetid_db_acc=False):
     """returns a file containing all the sequence files in PROTEINGBS table"""
-    conn=seqdbutils.gracefuldbopen(dbpath)
+    conn=seqdbutils.gracefuldbopen(dbpathstr)
+    seqdbutils.check_tables_exist(conn,["PROTEINGBS"])
     c=conn.cursor()
     c.execute('''SELECT * FROM PROTEINGBS WHERE acc NOT NULL''')
     allrows=c.fetchall()
@@ -101,7 +102,10 @@ def extractsrs(dbpath,format='fasta'):
     for row in allrows:
         pklgbsr=row['pklgbsr']
         if pklgbsr is not None:
-            srs.append(pickle.loads(row['pklgbsr']))
+            newsr=pickle.loads(row['pklgbsr'])
+            if resetid_db_acc:
+                newsr.id=row['acc']
+            srs.append(newsr)
         else:
             missingsr_accs.append(row['acc'])
     conn.close()

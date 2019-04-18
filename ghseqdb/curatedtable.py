@@ -181,31 +181,45 @@ def build_curatedxtaltable(dbpathstr,xtalxlfpath,sheet_name="Sheet1",xtalsdb_rel
     conn.commit()
     conn.close()
 
-
-def mergein_predictedccdata(dbpathstr):
+def extract_curatedsrs(dbpathstr,form='cc',resetid_db_acc='False'):
+    """returns a list of type SeqRecord containing all the sequence files in CURATEDXTALS, OTHERS? table"""
     conn=seqdbutils.gracefuldbopen(dbpathstr)
-    seqdbutils.check_tables_exist(conn,['CURATEDXTALS','CCDATA'])
+    seqdbutils.check_tables_exist(conn,['CURATEDXTALS','PROTEINGBS'])
     c=conn.cursor()
 
-    #c.execute('''SELECT CCDATA.acc,CCDATA.ccb,CCDATA.ccstart,CCDATA.ccstop,CURATEDXTALS.ntccpos,CURATEDXTALS.ctccpos FROM CCDATA INNER JOIN CURATEDXTALS ON CCDATA.acc = CURATEDXTALS.acc''')
-    c.execute('''SELECT * FROM CCDATA INNER JOIN CURATEDXTALS ON CCDATA.acc = CURATEDXTALS.acc''')
-    cxccs=c.fetchall()
-    for cxcc in cxccs:
-#        curacc=cxcc['acc']
-#        c.execute('''SELECT pklgbsr FROM PROTEINGBS WHERE acc=(?)''',(curacc,))
-#        gbsr=pickle.loads(c.fetchone())
-#        myseq=gbsr.seq
-        #NOW MATCH the seq to see if this works... 
-#        curccb=pickle.loads(cxcc['ccb'])
-#        print(curccb.)
-        try:
-            #print(cxcc['acc'],cxcc['ccstart'],cxcc['ccstop'],cxcc['ntccpos'],cxcc['ctccpos'])
-            print(cxcc['acc'],cxcc['ccstart'],cxcc['ccstop'],cxcc['ntccpos'],cxcc['ctccpos'])
-            print(cxcc['ntccseq'],cxcc['ctccseq'])
-        except:
-            conn.close()
-            sys.exit()
+    c.execute('''SELECT * FROM CURATEDXTALS INNER JOIN PROTEINGBS \
+                 ON CURATEDXTALS.acc=PROTEINGBS.acc WHERE CURATEDXTALS.pdbid NOT NULL''') #is WHERE needed?
+    allrows=c.fetchall()
+    print(f'found {len(allrows)} non-null entries from CURATEDXTALS')
+
+    srs=[]
+    for row in allrows:
+        pklgbsr=row['pklgbsr']
+        if pklgbsr is not None:
+            newsr=pickle.loads(row['pklgbsr'])
+            newsr.seq=newsr.seq[row['pgbsr_ccstart']:row['pgbsr_ccstop']]
+            if resetid_db_acc:
+                newsr.id=row['acc']
+            srs.append(newsr)
     conn.close()
+    return srs
+
+#def eval_ccdata(dbpathstr):
+#    conn=seqdbutils.gracefuldbopen(dbpathstr)
+#    seqdbutils.check_tables_exist(conn,['CURATEDXTALS','CCDATA'])
+#    c=conn.cursor()
+#
+#    #c.execute('''SELECT CCDATA.acc,CCDATA.ccb,CCDATA.ccstart,CCDATA.ccstop,CURATEDXTALS.ntccpos,CURATEDXTALS.ctccpos FROM CCDATA INNER JOIN CURATEDXTALS ON CCDATA.acc = CURATEDXTALS.acc''')
+#    c.execute('''SELECT * FROM CCDATA INNER JOIN CURATEDXTALS ON CCDATA.acc = CURATEDXTALS.acc''')
+#    cxccs=c.fetchall()
+#    for cxcc in cxccs:
+#        try:
+#            print(cxcc['acc'],cxcc['ccstart'],cxcc['ccstop'],cxcc['ntccpos'],cxcc['ctccpos'])
+#            print(cxcc['ntccseq'],cxcc['ctccseq'])
+#        except:
+#            conn.close()
+#            sys.exit()
+#    conn.close()
 
 #tests-numtypes coming out of db
 #unique list of accs in PROTEINGBS

@@ -5,6 +5,7 @@ ghseqdb/ccrefiner.py
 ghseqdb/cctable.py
 ghseqdb/curatedtable.py
 ghseqdb/pgbtable.py
+ghseqdb/pwaligner.py
 ghseqdb/seqdbutils.py
 ghseqdb/xtalstable.py
 kbiodb.egg-info/PKG-INFO
