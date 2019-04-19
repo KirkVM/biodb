@@ -1,4 +1,4 @@
-import pickle
+import pickle,sys
 from Bio import SeqIO,pairwise2
 from Bio.SubsMat.MatrixInfo import blosum62
 import numpy as np
@@ -33,6 +33,7 @@ class PWAInfo:
         self.initialize_info()
         if len(self.alns)>0:
             self.buildinfo()
+        del self.alns
     def initialize_info(self):
         if len(self.alns)==0:
             self.score=np.nan
@@ -102,4 +103,22 @@ def multi_curate_alstats(dbgbsrs,cgbsrs,gap_penalty=-10,ext_penalty=-0.5,penaliz
 
 #def dostuff(dbfile,dbnames,curatefile,curatenames,numsplits,split):
 
+def do_chtc_function(argv=None):
+    if argv is None:
+        argv=sys.argv
+    assert (len(argv)==5), "require 4 args: dbsrfile,cursrfile,numsplits,splitnum"
+    dbsrfile=argv[1]
+    cursrfile=argv[2]
+    numsplits=int(argv[3])
+    splitnum=int(argv[4])
+    dbsrs=list(SeqIO.parse(dbsrfile,'fasta'))
+    cursrs=list(SeqIO.parse(cursrfile,'fasta'))
+    idxsplits=np.array_split(range(len(dbsrs)),numsplits)
+    split_dbsrs=dbsrs[idxsplits[splitnum][0]:idxsplits[splitnum][-1]+1]
+    allpwainfos=multi_curate_alstats(split_dbsrs,cursrs)
+    outfile=open(f'pwaset{splitnum}.pkl','wb')
+    pickle.dump(allpwainfos,outfile)
+    outfile.close()
 
+if __name__=="__main__":
+    do_chtc_function()
