@@ -1,4 +1,4 @@
-import pickle,sys
+import pickle,sys,tarfile,re,os
 from Bio import SeqIO,pairwise2
 from Bio.SubsMat.MatrixInfo import blosum62
 import numpy as np
@@ -101,6 +101,19 @@ def multi_curate_alstats(dbgbsrs,cgbsrs,gap_penalty=-10,ext_penalty=-0.5,penaliz
     return allpwainfos
     
 
+def pwfldrreader(pathstr,mode="directory",tarballs=True):
+    pwas=[]
+    if tarballs:
+        tRE=re.compile('.+\.tgz|.+\.tar\.gz')
+        tfnames=[x for x in os.listdir(pathstr) if tRE.match(x) is not None]
+        for tfname in tfnames:
+            print(tfname)
+            tf=tarfile.open(tfname,mode='r:gz') 
+            ti=tf.getmembers()[0]
+            print(ti)
+            pkldpwas=tf.extractfile(ti)
+            pwas=pickle.load(pkldpwas)
+            tf.close()
 #def dostuff(dbfile,dbnames,curatefile,curatenames,numsplits,split):
 
 def do_chtc_function(argv=None):
