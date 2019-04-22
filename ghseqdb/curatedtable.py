@@ -114,8 +114,8 @@ def do_register_aln(pgbseq,curatedrow,eformat,alnreg,mode,xtalseqstr=None):
                         if alnreg.success:
                             break
         if alnreg.success:
-            alnreg.message+=f'---->Fuzzy match worked for xtal {curatedrow["pdbid"]} - {curatedrow["acc"]},\
-                            eformat {alnreg.enzyme_format}: ({alnreg.start},{alnreg.stop})'
+            alnreg.message+=f'---->Fuzzy match worked for xtal {curatedrow["pdbid"]} - {curatedrow["acc"]},'
+            alnreg.message+=f' eformat {alnreg.enzyme_format}: ({alnreg.start},{alnreg.stop})'
         else:
             alnreg.message+=f'|||||||||FAILED to find register for {curatedrow["pdbid"]} despite enabling fuzzy matching|||||||||||'
     #do a final clean-up to round to start or stop of sequence--
@@ -251,7 +251,7 @@ def build_curatedxtaltable(dbpathstr,xtalxlfpath,sheet_name="Sheet1",xtalsdb_rel
     conn.commit()
     conn.close()
 
-def extract_curatedsrs(dbpathstr,form='cc',resetid_db_acc='False'):
+def extract_curatedsrs(dbpathstr,eform='cc',resetid_db_acc='False'):
     """returns a list of type SeqRecord containing all the sequence files in CURATEDXTALS, OTHERS? table"""
     conn=seqdbutils.gracefuldbopen(dbpathstr)
     seqdbutils.check_tables_exist(conn,['CURATEDXTALS','PROTEINGBS'])
@@ -262,12 +262,16 @@ def extract_curatedsrs(dbpathstr,form='cc',resetid_db_acc='False'):
     allrows=c.fetchall()
     print(f'found {len(allrows)} non-null entries from CURATEDXTALS')
 
+    assert (eform in ['cc','full']),'eform must be either cc or full'
     srs=[]
     for row in allrows:
         pklgbsr=row['pklgbsr']
         if pklgbsr is not None:
             newsr=pickle.loads(row['pklgbsr'])
-            newsr.seq=newsr.seq[row['pgbsr_ccstart']:row['pgbsr_ccstop']]
+            if eform=='cc':
+                newsr.seq=newsr.seq[row['pgbsr_ccstart']:row['pgbsr_ccstop']]
+            elif eform=='full':
+                newsr.seq=newsr.seq[row['pgbsr_fullstart']:row['pgbsr_fullstop']]
             if resetid_db_acc:
                 newsr.id=row['acc']
             srs.append(newsr)

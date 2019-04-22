@@ -1,4 +1,6 @@
-import pickle,sys,tarfile,re,os
+import pickle,sys,tarfile,re,os,dask
+import xarray as xr
+from pathlib import Path
 from Bio import SeqIO,pairwise2
 from Bio.SubsMat.MatrixInfo import blosum62
 import numpy as np
@@ -84,6 +86,7 @@ class PWAInfo:
 def biopython_pwaln(dbsr,curatesr,gap_penalty=-10,ext_penalty=-0.5,penalize_end_gaps=(True,False)):
     alns=pairwise2.align.globalds(dbsr.seq,curatesr.seq,blosum62,gap_penalty,ext_penalty,penalize_end_gaps=penalize_end_gaps)
     pwainfo=PWAInfo(dbsr.id,curatesr.id,alns,gap_penalty=gap_penalty,ext_penalty=ext_penalty,penalize_end_gaps=penalize_end_gaps)
+    pwainfo.__module__='pwaligner' #for thread-safe pickling?
     return pwainfo
 
 def get_curate_alstats(dbgbsr,cgbsrs,gap_penalty=-10,ext_penalty=-0.5,penalize_end_gaps=(True,False)):
@@ -101,20 +104,58 @@ def multi_curate_alstats(dbgbsrs,cgbsrs,gap_penalty=-10,ext_penalty=-0.5,penaliz
     return allpwainfos
     
 
-def pwfldrreader(pathstr,mode="directory",tarballs=True):
-    pwas=[]
+####### HERE IS STUFF TO GET PW ALIGNMENT FROM DIRECTORY OF *.tgz FILES###########
+def build_xarray_frompwais(pwais):
+    #for pwai in pwais:
+    data_array=np.zeros((len(pwais),len(pwais[0]),6))
+    dbaccs=[x[0].dbacc for x in pwais]
+    caccs=[x.curateacc for x in pwais[0]]
+    for dbidx,dbpw in enumerate(pwais):
+        for cidx,pwai in enumerate(dbpw):
+            #print(pwai.median_start)
+            data_array[dbidx][cidx][0]=pwai.score
+            data_array[dbidx][cidx][1]=np.nan
+            data_array[dbidx][cidx][2]=pwai.median_start
+            data_array[dbidx][cidx][3]=pwai.avg_start
+            data_array[dbidx][cidx][4]=pwai.median_stop
+            data_array[dbidx][cidx][5]=pwai.avg_stop
+    pwdr=xr.DataArray(data_array,coords=[dbaccs,caccs,['score','normscore','mdn_start','avg_start','mdn_stop','avg_stop']],dims=['dbseqs','curateseqs','parameter'])
+    return pwdr
+#    return None
+
+def xra_from_file(fpath,tarball=True,pickled=True):
+    if tarball:
+        tf=tarfile.open(fpath,mode="r:gz")
+        ti=tf.getmembers()[0]
+        pwafile=tf.extractfile(ti)
+        if pickled: #not sure why this would not be case
+            pwais=pickle.load(pwafile) 
+        tf.close()
+
+    return build_xarray_frompwais(pwais)
+
+def build_pwxra_from_directory(pathstr,tarballs=True,pickled=True):    
+    fpaths=[]
     if tarballs:
         tRE=re.compile('.+\.tgz|.+\.tar\.gz')
         tfnames=[x for x in os.listdir(pathstr) if tRE.match(x) is not None]
-        for tfname in tfnames:
-            print(tfname)
-            tf=tarfile.open(tfname,mode='r:gz') 
-            ti=tf.getmembers()[0]
-            print(ti)
-            pkldpwas=tf.extractfile(ti)
-            pwas=pickle.load(pkldpwas)
-            tf.close()
-#def dostuff(dbfile,dbnames,curatefile,curatenames,numsplits,split):
+        for tfname in tfnames:#[:5]:
+            tfpath=Path(pathstr) / tfname
+            fpaths.append(tfpath.resolve())
+    else:
+        print('tarball method only one currently implemented')
+        return None
+    xras=[]
+    appendtasks=[]
+    for fpath in fpaths:
+        appendtasks.append( dask.delayed( xra_from_file,pure=True)(fpath))
+        #xras.append(xra_from_file(fpath))
+    xras=dask.compute(*appendtasks)
+    pwxra=xr.concat(xras,dim='dbseqs')
+    #dask.compute()
+    return pwxra
+####### HERE IS STUFF TO GET PW ALIGNMENT FROM DIRECTORY OF *.tgz FILES###########
+
 
 def do_chtc_function(argv=None):
     if argv is None:
