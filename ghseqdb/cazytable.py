@@ -2,7 +2,7 @@ import sqlite3,re,datetime
 from . import seqdbutils
 from scrapers import cazydbscrapers
 
-def build_cazytable(ghfam,dbpath):
+def build_cazytable(ghfam,dbpathstr):
     """scrapes CAZY db for accession codes/annotations info, then downloads seqs through NCBI Entrez
 
     Arguments:
@@ -13,12 +13,8 @@ def build_cazytable(ghfam,dbpath):
     Returns:
         sqlite db (also writes out pseq fasta file)
     """    
-    conn=seqdbutils.gracefuldbopen(dbpath) 
+    conn=seqdbutils.gracefuldbopen(dbpathstr) 
     c=conn.cursor()
-#    try:
-#        c.execute('''SELECT COUNT (*) FROM CAZYSEQDATA''')
-#        cazydbsize=c.fetchone()[0]
-
     c.execute('''CREATE TABLE IF NOT EXISTS CAZYSEQDATA (acc text, version text, scrapedate text, \
                 subfam text, extragbs text, ecs text, pdbids text, uniprotids text)''')
     print('starting CAZY scrape')
@@ -75,13 +71,30 @@ def build_cazytable(ghfam,dbpath):
             c.execute('''INSERT INTO CAZYSEQDATA VALUES (?,?,?,?,?,?,?,?)''',new_tuple)
             add_count+=1
         else:
-            update_tuple=(accvrsn,todaystr,subfam,extragbs,ecs,pdbids,uniprotids,acc)
-            existingdate=datetime.date(*[int(x) for x in existingentries[0]['scrapedate'].split('-')])
+            prev_entry=existingentries[0]
+            existingdate=datetime.date(*[int(x) for x in prev_entry['scrapedate'].split('-')])
             days_since_update=(today-existingdate).days
-            if days_since_update>30:
-                c.execute('''UPDATE CAZYSEQDATA SET version = (?), scrapedate = (?), subfam = (?), \
+            if days_since_update>15: #compare values
+                cazy_changes=False
+                if subfam!=prev_entry['subfam'] or extragbs!=prev_entry['extragbs'] or \
+                               ecs!=prev_entry['ecs'] or pdbids!=prev_entry['pdbids']:
+                    print(f'change to {acc}. Updating')
+                    cazy_changes=True
+                if subfam!=prev_entry['subfam']:
+                    print(f'++++ subfam change from {prev_entry["subfam"]} to {subfam}')
+                if extragbs!=prev_entry['extragbs']:
+                    print(f'++++ extragbs change from {prev_entry["extragbs"]} to {extragbs}')
+                if ecs!=prev_entry['ecs']:
+                    print(f'+___ECECECECECECEC___ ecs change from {prev_entry["ecs"]} to {ecs}___ECECECECECECEC___+')
+                if pdbids!=prev_entry['pdbids']:
+                    print(f'+___PDBPDBPDBPDBPDB____ pdbids change from {prev_entry["pdbids"]} to {pdbids} ___PDBPDBPDBPDBPDB____+')
+                if accvrsn!=prev_entry['version']:
+                    print(f'++++ accvrsn change for {acc}** not updating if this is the only cHange **')
+                if cazy_changes:
+                    update_tuple=(accvrsn,todaystr,subfam,extragbs,ecs,pdbids,uniprotids,acc)
+                    c.execute('''UPDATE CAZYSEQDATA SET version = (?), scrapedate = (?), subfam = (?), \
                             extragbs = (?), ecs = (?), pdbids = (?), uniprotids = (?) WHERE acc = (?)''',update_tuple)
-                update_count+=1
+                    update_count+=1
     conn.commit()
     conn.close()
     print(f'added {add_count} entries, updated {update_count} entries')

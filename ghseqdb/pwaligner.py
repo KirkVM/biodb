@@ -107,7 +107,7 @@ def multi_curate_alstats(dbgbsrs,cgbsrs,gap_penalty=-10,ext_penalty=-0.5,penaliz
 ####### HERE IS STUFF TO GET PW ALIGNMENT FROM DIRECTORY OF *.tgz FILES###########
 def build_xarray_frompwais(pwais):
     #for pwai in pwais:
-    data_array=np.zeros((len(pwais),len(pwais[0]),6))
+    data_array=np.zeros((len(pwais),len(pwais[0]),10))
     dbaccs=[x[0].dbacc for x in pwais]
     caccs=[x.curateacc for x in pwais[0]]
     for dbidx,dbpw in enumerate(pwais):
@@ -115,11 +115,16 @@ def build_xarray_frompwais(pwais):
             #print(pwai.median_start)
             data_array[dbidx][cidx][0]=pwai.score
             data_array[dbidx][cidx][1]=np.nan
-            data_array[dbidx][cidx][2]=pwai.median_start
-            data_array[dbidx][cidx][3]=pwai.avg_start
-            data_array[dbidx][cidx][4]=pwai.median_stop
-            data_array[dbidx][cidx][5]=pwai.avg_stop
-    pwdr=xr.DataArray(data_array,coords=[dbaccs,caccs,['score','normscore','mdn_start','avg_start','mdn_stop','avg_stop']],dims=['dbseqs','curateseqs','parameter'])
+            data_array[dbidx][cidx][2]=np.nan
+            data_array[dbidx][cidx][3]=np.nan
+            data_array[dbidx][cidx][4]=pwai.median_start
+            data_array[dbidx][cidx][5]=pwai.avg_start
+            data_array[dbidx][cidx][6]=pwai.median_stop
+            data_array[dbidx][cidx][7]=pwai.avg_stop
+            data_array[dbidx][cidx][8]=np.nan
+            data_array[dbidx][cidx][9]=np.nan
+    params=['score','normscore','lognormscore','log10normscore','mdn_start','avg_start','mdn_stop','avg_stop','start_conf','stop_conf']
+    pwdr=xr.DataArray(data_array,coords=[dbaccs,caccs,params],dims=['dbseq','curateseq','parameter'])
     return pwdr
 #    return None
 
@@ -151,7 +156,7 @@ def build_pwxra_from_directory(pathstr,tarballs=True,pickled=True):
         appendtasks.append( dask.delayed( xra_from_file,pure=True)(fpath))
         #xras.append(xra_from_file(fpath))
     xras=dask.compute(*appendtasks)
-    pwxra=xr.concat(xras,dim='dbseqs')
+    pwxra=xr.concat(xras,dim='dbseq')
     #dask.compute()
     return pwxra
 ####### HERE IS STUFF TO GET PW ALIGNMENT FROM DIRECTORY OF *.tgz FILES###########
