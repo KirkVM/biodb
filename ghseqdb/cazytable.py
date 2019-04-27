@@ -2,7 +2,7 @@ import sqlite3,re,datetime
 from . import seqdbutils
 from scrapers import cazydbscrapers
 
-def build_cazytable(ghfam,dbpathstr):
+def build_cazytable(ghfam,dbpathstr,drop_old=False):
     """scrapes CAZY db for accession codes/annotations info, then downloads seqs through NCBI Entrez
 
     Arguments:
@@ -26,6 +26,7 @@ def build_cazytable(ghfam,dbpathstr):
     today=datetime.date.today()
     todaystr=f'{today.year}-{today.month:02d}-{today.day:02d}'
     accRE=re.compile("(.+)\.(\d+)")
+    czegbs=[]
     for cze in czes_:
         maingbacc=cze.gbids_[0]
         try:
@@ -34,6 +35,7 @@ def build_cazytable(ghfam,dbpathstr):
             print(f'no sequence version for {maingbacc}')
             acc=maingbacc
             accvrsn=None
+        czegbs.append(acc)
         c.execute('''SELECT * FROM CAZYSEQDATA WHERE acc = (?)''',(acc,))
         existingentries=c.fetchall()
         assert(len(existingentries))<=1, f"more than 1 entry exists for {acc}"
@@ -95,6 +97,17 @@ def build_cazytable(ghfam,dbpathstr):
                     c.execute('''UPDATE CAZYSEQDATA SET version = (?), scrapedate = (?), subfam = (?), \
                             extragbs = (?), ecs = (?), pdbids = (?), uniprotids = (?) WHERE acc = (?)''',update_tuple)
                     update_count+=1
+        ###still need logic to drop old entries, if no longer there or re-classified as an alt id of a difft entry
     conn.commit()
+    c.execute('''SELECT * FROM CAZYSEQDATA''')
+    dbrows=c.fetchall()
+    dbgbs=[x['acc'] for x in dbrows]
+    missing_gbs=list(set(dbgbs).difference(czegbs))
+    missing_count=len(missing_gbs)
+    if missing_count>0:
+        print(f'{missing_count} CAZYSEQDATA rows could be dropped based on cazy.org. Consider setting drop_old=True')
+    for mgb in missing_gbs:
+        print(f'{mgb} in CAZYSEQDATA but no longer on cazy.org for this family')
+        #TODO iterate through CAZYSEQDDATA WHERE extragbs is not null and compare
     conn.close()
     print(f'added {add_count} entries, updated {update_count} entries')
