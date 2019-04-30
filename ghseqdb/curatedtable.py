@@ -52,10 +52,11 @@ def do_register_aln(pgbseq,curatedrow,eformat,alnreg,mode,xtalseqstr=None):
         curated_stopseq=curatedrow['ctfullseq']
         curated_startresnum=curatedrow['ntfullpos']
         curated_stopresnum=curatedrow['ctfullpos']
-    
+
+#    import pdb;pdb.set_trace()     
     inter_seqlen=curated_stopresnum-len(curated_stopseq) - (curated_startresnum+len(curated_startseq)) + 1
-    inter_max=inter_seqlen+2
-    inter_min=inter_seqlen-2
+    inter_max=inter_seqlen+3
+    inter_min=inter_seqlen-3
     seqrestring=f'({curated_startseq}.{{{inter_min},{inter_max}}}{curated_stopseq})'
     seqRE=re.compile(seqrestring) 
     if mode=='easy': 
@@ -71,15 +72,21 @@ def do_register_aln(pgbseq,curatedrow,eformat,alnreg,mode,xtalseqstr=None):
     elif mode=='xtal':
         xstrmatch=seqRE.search(xtalseqstr)
         if xstrmatch:
-            max_ratio=0
-            xtalcoreseqstr=xstrmatch.group(1)
-            for strtcand in range(0,len(pgbseq)-inter_min ):
-                for stopcand in range(strtcand+inter_min,strtcand+inter_max):
-                    sm=difflib.SequenceMatcher(a=xtalcoreseqstr,b=str(pgbseq),autojunk=False)
-                    if sm.ratio()>max_ratio:
+            max_ratio=0.95
+            len_maxratio=0
+            xtalenzy_seqstr=xstrmatch.group(1)
+            minlen_extalseq=len(xtalenzy_seqstr)-3
+            maxlen_extalseq=len(xtalenzy_seqstr)+3
+            for strtcand in range(0,len(pgbseq)-minlen_extalseq ):
+                for stopcand in range(strtcand+minlen_extalseq,  strtcand+maxlen_extalseq ):
+                    stopcand=min(stopcand,len(pgbseq))
+                    sm=difflib.SequenceMatcher(a=xtalenzy_seqstr,b=str(pgbseq)[strtcand:stopcand],autojunk=False)
+                    if sm.ratio()>max_ratio or (sm.ratio()==max_ratio and (stopcand-strtcand>len_maxratio)):
                         alnreg.start=strtcand
                         alnreg.stop=stopcand-1
                         alnreg.success=True #may continually overwrite best register
+                        max_ratio=sm.ratio()
+                        len_maxratio=stopcand-strtcand
         if alnreg.success:
             alnreg.message+= f'-->found {curatedrow["pdbid"]} by matching xtalpeptide to genbank sequence'
             alnreg.message+= f' {curatedrow["acc"]}: ({alnreg.start},{alnreg.stop})\n'
@@ -119,11 +126,11 @@ def do_register_aln(pgbseq,curatedrow,eformat,alnreg,mode,xtalseqstr=None):
         else:
             alnreg.message+=f'|||||||||FAILED to find register for {curatedrow["pdbid"]} despite enabling fuzzy matching|||||||||||'
     #do a final clean-up to round to start or stop of sequence--
-    if alnreg.success:
-        if alnreg.start<3:
-            alnreg.start=0
-        if alnreg.stop>len(pgbseq)-3:
-            alnreg.stop=len(pgbseq)-1
+#    if alnreg.success:
+#        if alnreg.start<3:
+#            alnreg.start=0
+#        if alnreg.stop>len(pgbseq)-3:
+#            alnreg.stop=len(pgbseq)-1
     return alnreg
  
 
@@ -226,7 +233,7 @@ def build_curatedxtaltable(dbpathstr,xtalxlfpath,sheet_name="Sheet1",xtalsdb_rel
                 (acc text, xtalfname text, xtalf_mtime int, cazypdblist text, pdbid text, pdbchain text,\
                 ntccpos int, ctccpos int, ntccseq text, ctccseq text,\
                 ntfullpos int, ctfullpos int, ntfullseq text, ctfullseq text,\
-                pgbsr_ccstart int, pgbsr_ccstop int, pgbsr_fullstart int, pgbsr_fullstop int,
+                pgbsr_ccstart int, pgbsr_ccstop int, pgbsr_fullstart int, pgbsr_fullstop int, \
                 enable_fuzzy int, pgbsr_seqchecksum text)''')
     for _,xrow in xtaldf.dropna(subset=['curated_pdb']).iterrows():
         assert(type(xrow['cc_startnum']) in (float,int)),"cc_startnum type not numeric"
@@ -277,23 +284,3 @@ def extract_curatedsrs(dbpathstr,eform='cc',resetid_db_acc='False'):
             srs.append(newsr)
     conn.close()
     return srs
-
-#def eval_ccdata(dbpathstr):
-#    conn=seqdbutils.gracefuldbopen(dbpathstr)
-#    seqdbutils.check_tables_exist(conn,['CURATEDXTALS','CCDATA'])
-#    c=conn.cursor()
-#
-#    #c.execute('''SELECT CCDATA.acc,CCDATA.ccb,CCDATA.ccstart,CCDATA.ccstop,CURATEDXTALS.ntccpos,CURATEDXTALS.ctccpos FROM CCDATA INNER JOIN CURATEDXTALS ON CCDATA.acc = CURATEDXTALS.acc''')
-#    c.execute('''SELECT * FROM CCDATA INNER JOIN CURATEDXTALS ON CCDATA.acc = CURATEDXTALS.acc''')
-#    cxccs=c.fetchall()
-#    for cxcc in cxccs:
-#        try:
-#            print(cxcc['acc'],cxcc['ccstart'],cxcc['ccstop'],cxcc['ntccpos'],cxcc['ctccpos'])
-#            print(cxcc['ntccseq'],cxcc['ctccseq'])
-#        except:
-#            conn.close()
-#            sys.exit()
-#    conn.close()
-
-#tests-numtypes coming out of db
-#unique list of accs in PROTEINGBS
