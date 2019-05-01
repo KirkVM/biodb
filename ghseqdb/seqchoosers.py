@@ -27,27 +27,6 @@ def get_intpwid_df(pwfpathstr,format='clustal'):
     pwdf.astype(int)
     return pwdf
 
-
-
-def get_taxdict(sr,ncbitaxa):
-    rankinfodict={}
-    for sf in sr.features:
-        if sf.type=='source':
-            for k in sf.qualifiers:
-                if k=='db_xref':
-                    dbxrs=sf.qualifiers[k]
-                    for dbxr in dbxrs:
-                        svals=dbxr.split(':')
-                        if svals[0]=='taxon':
-                            taxid=int(svals[1])
-                            taxlineage=ncbitaxa.get_lineage(taxid)
-                            rankdict=ncbitaxa.get_rank(taxlineage)
-                            valdict=ncbitaxa.get_taxid_translator(taxlineage)
-                            rev_rankdict={rankdict[k]:k for k in rankdict}
-                            rev_valdict={valdict[k]:k for k in valdict}
-                            rankinfodict={rankdict[k]:[k,valdict[k]] for k in rankdict}
-    return rankinfodict
-
 def build_seqxds(vpwxracc_fpathstr,dbpathstr,vpwxrafull_fpathstr=None):
     '''builds an xarray dataset from vscurate xarray, adding '''
     vpwxra_cc=xr.open_dataarray(vpwxracc_fpathstr)
@@ -74,13 +53,19 @@ def build_seqxds(vpwxracc_fpathstr,dbpathstr,vpwxrafull_fpathstr=None):
     for accentry in vpwxra_cc.dbseq:
         acc=accentry.data.item(0)
         c.execute('''SELECT * FROM PROTEINGBS WHERE acc=(?)''',(acc,))
-        sr=pickle.loads(c.fetchone()['pklgbsr'])
-        taxdict=get_taxdict(sr,ncbitaxa)
-        for k in taxdict:
-            if k in taxra.ranks:
-                taxra.loc[acc,k]=taxdict[k][0]
-                tonamedict[taxdict[k][1]]=taxdict[k][0]
-
+#        sr=pickle.loads(c.fetchone()['pklgbsr'])
+        #taxdict=get_taxdict(sr,ncbitaxa)
+        row=c.fetchone()
+        taxid=row['taxid']
+        if taxid is not None:
+            taxlineage=ncbitaxa.get_lineage(taxid)
+            rankdict=ncbitaxa.get_rank(taxlineage)
+            valdict=ncbitaxa.get_taxid_translator(taxlineage)
+            rankinfodict={rankdict[k]:[k,valdict[k]] for k in rankdict}
+            for k in rankinfodict:
+                if k in taxra.ranks:
+                    taxra.loc[acc,k]=rankinfodict[k][0]
+                    tonamedict[rankinfodict[k][1]]=rankinfodict[k][0]
     conn.close()
 #    mergeds=xr.Dataset(data_vars={'vpwxra':vpwxra,'taxra':taxra})
     #mergeds=xr.Dataset(data_vars={'vpwxra':vpwxracc})
