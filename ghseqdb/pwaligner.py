@@ -1,11 +1,12 @@
-import pickle,sys,tarfile,re,os,dask
+#import pwaligner
+import pickle,sys,tarfile,re,os,dask,copyreg
 import xarray as xr
 from pathlib import Path
 from Bio import SeqIO,pairwise2
 from Bio.SubsMat.MatrixInfo import blosum62
 import numpy as np
 
-class PWAInfo:
+class VPWAInfo:
     def __init__(self,dbacc,curateacc,bpalns,gap_penalty,ext_penalty,penalize_end_gaps):
         ''''sets up aln info
 
@@ -24,7 +25,7 @@ class PWAInfo:
         self.dbseqlen=None
         self.curateseqlen=None
         self.seqaln_density=None
-        self.vseq_curatedensity=None
+        self.vseqaln_curatedensity=None
         self.score=None
         self.starts=[]
         self.stops=[]
@@ -83,63 +84,68 @@ class PWAInfo:
         self.seqaln_density/=len(self.alns)
         self.vseqaln_curatedensity/=len(self.alns)
 
-def biopython_pwaln(dbsr,curatesr,gap_penalty=-10,ext_penalty=-0.5,penalize_end_gaps=(True,False)):
+def biopython_vpwaln(dbsr,curatesr,gap_penalty=-10,ext_penalty=-0.5,penalize_end_gaps=(True,False)):
     alns=pairwise2.align.globalds(dbsr.seq,curatesr.seq,blosum62,gap_penalty,ext_penalty,penalize_end_gaps=penalize_end_gaps)
-    pwainfo=PWAInfo(dbsr.id,curatesr.id,alns,gap_penalty=gap_penalty,ext_penalty=ext_penalty,penalize_end_gaps=penalize_end_gaps)
-    pwainfo.__module__='pwaligner' #for thread-safe pickling?
-    return pwainfo
+    vpwainfo=VPWAInfo(dbsr.id,curatesr.id,alns,gap_penalty=gap_penalty,ext_penalty=ext_penalty,penalize_end_gaps=penalize_end_gaps)
+    return vpwainfo
 
 def get_curate_alstats(dbgbsr,cgbsrs,gap_penalty=-10,ext_penalty=-0.5,penalize_end_gaps=(True,False)):
-    pwainfos=[]
+    vpwainfos=[]
     for cgbsr in cgbsrs:
-        curpwainfo=biopython_pwaln(dbgbsr,cgbsr,gap_penalty=gap_penalty,ext_penalty=ext_penalty,penalize_end_gaps=penalize_end_gaps)
-        pwainfos.append(curpwainfo)
-    return pwainfos
+        curvpwainfo=biopython_vpwaln(dbgbsr,cgbsr,gap_penalty=gap_penalty,ext_penalty=ext_penalty,penalize_end_gaps=penalize_end_gaps)
+        vpwainfos.append(curvpwainfo)
+    return vpwainfos
 
 def multi_curate_alstats(dbgbsrs,cgbsrs,gap_penalty=-10,ext_penalty=-0.5,penalize_end_gaps=(True,False)):
-    allpwainfos=[]
+    allvpwainfos=[]
     for dbgbsr in dbgbsrs:
-        pwainfos=get_curate_alstats(dbgbsr,cgbsrs,gap_penalty=gap_penalty,ext_penalty=ext_penalty,penalize_end_gaps=penalize_end_gaps)
-        allpwainfos.append(pwainfos)
-    return allpwainfos
+        vpwainfos=get_curate_alstats(dbgbsr,cgbsrs,gap_penalty=gap_penalty,ext_penalty=ext_penalty,penalize_end_gaps=penalize_end_gaps)
+        allvpwainfos.append(vpwainfos)
+    return allvpwainfos
     
 
 ####### HERE IS STUFF TO GET PW ALIGNMENT FROM DIRECTORY OF *.tgz FILES###########
-def build_xarray_frompwais(pwais):
+def build_xarray_fromvpwais(vpwais):
     #for pwai in pwais:
-    data_array=np.zeros((len(pwais),len(pwais[0]),10))
-    dbaccs=[x[0].dbacc for x in pwais]
-    caccs=[x.curateacc for x in pwais[0]]
-    for dbidx,dbpw in enumerate(pwais):
-        for cidx,pwai in enumerate(dbpw):
+    data_array=np.zeros((len(vpwais),len(vpwais[0]),10))
+    dbaccs=[x[0].dbacc for x in vpwais]
+    caccs=[x.curateacc for x in vpwais[0]]
+    for dbidx,dbpw in enumerate(vpwais):
+        for cidx,vpwai in enumerate(dbpw):
             #print(pwai.median_start)
-            data_array[dbidx][cidx][0]=pwai.score
+            data_array[dbidx][cidx][0]=vpwai.score
             data_array[dbidx][cidx][1]=np.nan
             data_array[dbidx][cidx][2]=np.nan
             data_array[dbidx][cidx][3]=np.nan
-            data_array[dbidx][cidx][4]=pwai.median_start
-            data_array[dbidx][cidx][5]=pwai.avg_start
-            data_array[dbidx][cidx][6]=pwai.median_stop
-            data_array[dbidx][cidx][7]=pwai.avg_stop
+            data_array[dbidx][cidx][4]=vpwai.median_start
+            data_array[dbidx][cidx][5]=vpwai.avg_start
+            data_array[dbidx][cidx][6]=vpwai.median_stop
+            data_array[dbidx][cidx][7]=vpwai.avg_stop
             data_array[dbidx][cidx][8]=np.nan
             data_array[dbidx][cidx][9]=np.nan
     params=['score','normscore','lognormscore','log10normscore','mdn_start','avg_start','mdn_stop','avg_stop','start_conf','stop_conf']
-    pwdr=xr.DataArray(data_array,coords=[dbaccs,caccs,params],dims=['dbseq','curateseq','parameter'])
-    return pwdr
-#    return None
+    vpwdr=xr.DataArray(data_array,coords=[dbaccs,caccs,params],dims=['dbseq','curateseq','parameter'])
+    return vpwdr
+
+class VPWAInfoUnpickler(pickle.Unpickler):
+    def find_class(self, module, name):
+        if module == "__main__":
+            return VPWAInfo
+        return super().find_class(module, name)
 
 def xra_from_file(fpath,tarball=True,pickled=True):
     if tarball:
         tf=tarfile.open(fpath,mode="r:gz")
         ti=tf.getmembers()[0]
-        pwafile=tf.extractfile(ti)
+        vpwafile=tf.extractfile(ti)
         if pickled: #not sure why this would not be case
-            pwais=pickle.load(pwafile) 
+            #vpwais=pickle.load(vpwafile)
+            Unpickler=VPWAInfoUnpickler(vpwafile)
+            vpwais=Unpickler.load() 
         tf.close()
+    return build_xarray_fromvpwais(vpwais)
 
-    return build_xarray_frompwais(pwais)
-
-def build_pwxra_from_directory(pathstr,tarballs=True,pickled=True):    
+def build_vpwxra_from_directory(pathstr,tarballs=True,pickled=True):    
     fpaths=[]
     if tarballs:
         tRE=re.compile('.+\.tgz|.+\.tar\.gz')
@@ -154,13 +160,10 @@ def build_pwxra_from_directory(pathstr,tarballs=True,pickled=True):
     appendtasks=[]
     for fpath in fpaths:
         appendtasks.append( dask.delayed( xra_from_file,pure=True)(fpath))
-        #xras.append(xra_from_file(fpath))
     xras=dask.compute(*appendtasks)
-    pwxra=xr.concat(xras,dim='dbseq')
-    #dask.compute()
-    return pwxra
+    vpwxra=xr.concat(xras,dim='dbseq')
+    return vpwxra
 ####### HERE IS STUFF TO GET PW ALIGNMENT FROM DIRECTORY OF *.tgz FILES###########
-
 
 def do_chtc_function(argv=None):
     if argv is None:
@@ -174,10 +177,11 @@ def do_chtc_function(argv=None):
     cursrs=list(SeqIO.parse(cursrfile,'fasta'))
     idxsplits=np.array_split(range(len(dbsrs)),numsplits)
     split_dbsrs=dbsrs[idxsplits[splitnum][0]:idxsplits[splitnum][-1]+1]
-    allpwainfos=multi_curate_alstats(split_dbsrs,cursrs)
-    outfile=open(f'pwaset{splitnum}.pkl','wb')
-    pickle.dump(allpwainfos,outfile)
-    outfile.close()
+    allvpwainfos=multi_curate_alstats(split_dbsrs,cursrs)
+    
+    #copyreg.pickle(VPWAInfo, pickle_VPWAInfo)
+    with open(f'vpwaset{splitnum}.pkl','wb') as f:
+        pickle.dump(allvpwainfos,f)
 
 if __name__=="__main__":
     do_chtc_function()
