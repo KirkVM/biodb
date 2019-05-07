@@ -7,7 +7,7 @@ from Bio.SubsMat.MatrixInfo import blosum62
 import numpy as np
 
 class VPWAInfo:
-    def __init__(self,dbacc,curateacc,bpalns,gap_penalty,ext_penalty,penalize_end_gaps):
+    def __init__(self,dbacc,curateacc,bpalns,gap_penalty,ext_penalty,penalize_end_gaps,chtc_mode=False):
         ''''sets up aln info
 
         Arguments:
@@ -36,7 +36,8 @@ class VPWAInfo:
         self.initialize_info()
         if len(self.alns)>0:
             self.buildinfo()
-        del self.alns
+        if chtc_mode:
+            del self.alns
     def initialize_info(self):
         if len(self.alns)==0:
             self.score=np.nan
@@ -51,6 +52,7 @@ class VPWAInfo:
             self.avg_stop=0.0
     def buildinfo(self):
         for aln in self.alns:
+            curateseq_ended=False
             dbalnseq=aln[0]
             curatealnseq=aln[1]
             db_pos=-1
@@ -75,8 +77,9 @@ class VPWAInfo:
                     curate_pos+=1
                 if curate_pos==0:
                     self.starts.append(db_pos)
-                if curate_pos==self.curateseqlen-1:
+                if curate_pos==self.curateseqlen-1 and not curateseq_ended:
                     self.stops.append(db_pos)
+                    curateseq_ended=True
         self.avg_start=np.mean(self.starts)
         self.avg_stop=np.mean(self.stops)
         self.median_start=np.median(self.starts)
@@ -84,22 +87,22 @@ class VPWAInfo:
         self.seqaln_density/=len(self.alns)
         self.vseqaln_curatedensity/=len(self.alns)
 
-def biopython_vpwaln(dbsr,curatesr,gap_penalty=-10,ext_penalty=-0.5,penalize_end_gaps=(True,False)):
+def biopython_vpwaln(dbsr,curatesr,gap_penalty=-10,ext_penalty=-0.5,penalize_end_gaps=(True,False),chtc_mode=False):
     alns=pairwise2.align.globalds(dbsr.seq,curatesr.seq,blosum62,gap_penalty,ext_penalty,penalize_end_gaps=penalize_end_gaps)
-    vpwainfo=VPWAInfo(dbsr.id,curatesr.id,alns,gap_penalty=gap_penalty,ext_penalty=ext_penalty,penalize_end_gaps=penalize_end_gaps)
+    vpwainfo=VPWAInfo(dbsr.id,curatesr.id,alns,gap_penalty=gap_penalty,ext_penalty=ext_penalty,penalize_end_gaps=penalize_end_gaps,chtc_mode=chtc_mode)
     return vpwainfo
 
-def get_curate_alstats(dbgbsr,cgbsrs,gap_penalty=-10,ext_penalty=-0.5,penalize_end_gaps=(True,False)):
+def get_curate_alstats(dbgbsr,cgbsrs,gap_penalty=-10,ext_penalty=-0.5,penalize_end_gaps=(True,False),chtc_mode=False):
     vpwainfos=[]
     for cgbsr in cgbsrs:
-        curvpwainfo=biopython_vpwaln(dbgbsr,cgbsr,gap_penalty=gap_penalty,ext_penalty=ext_penalty,penalize_end_gaps=penalize_end_gaps)
+        curvpwainfo=biopython_vpwaln(dbgbsr,cgbsr,gap_penalty=gap_penalty,ext_penalty=ext_penalty,penalize_end_gaps=penalize_end_gaps,chtc_mode=chtc_mode)
         vpwainfos.append(curvpwainfo)
     return vpwainfos
 
-def multi_curate_alstats(dbgbsrs,cgbsrs,gap_penalty=-10,ext_penalty=-0.5,penalize_end_gaps=(True,False)):
+def multi_curate_alstats(dbgbsrs,cgbsrs,gap_penalty=-10,ext_penalty=-0.5,penalize_end_gaps=(True,False),chtc_mode=False):
     allvpwainfos=[]
     for dbgbsr in dbgbsrs:
-        vpwainfos=get_curate_alstats(dbgbsr,cgbsrs,gap_penalty=gap_penalty,ext_penalty=ext_penalty,penalize_end_gaps=penalize_end_gaps)
+        vpwainfos=get_curate_alstats(dbgbsr,cgbsrs,gap_penalty=gap_penalty,ext_penalty=ext_penalty,penalize_end_gaps=penalize_end_gaps,chtc_mode=chtc_mode)
         allvpwainfos.append(vpwainfos)
     return allvpwainfos
     
@@ -177,7 +180,7 @@ def do_chtc_function(argv=None):
     cursrs=list(SeqIO.parse(cursrfile,'fasta'))
     idxsplits=np.array_split(range(len(dbsrs)),numsplits)
     split_dbsrs=dbsrs[idxsplits[splitnum][0]:idxsplits[splitnum][-1]+1]
-    allvpwainfos=multi_curate_alstats(split_dbsrs,cursrs)
+    allvpwainfos=multi_curate_alstats(split_dbsrs,cursrs,chtc_mode=True)
     
     #copyreg.pickle(VPWAInfo, pickle_VPWAInfo)
     with open(f'vpwaset{splitnum}.pkl','wb') as f:

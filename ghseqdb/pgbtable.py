@@ -66,6 +66,11 @@ def get_tblaccs(cursor):
         accs.extend(accs2add)
     except:
         print('no CAZYSEQDATA table')
+    try:
+        cursor.execute('''SELECT acc FROM FROZENSEQS''')
+        accs.extend([x['acc'] for x in cursor.fetchall()])
+    except:
+        print('no FROZENSEQS table')
     return accs
 
 def build_proteingbtable(dbpath,email,api_key,refresh=False,retry_fails=False,stopat=None):

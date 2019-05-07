@@ -3,6 +3,7 @@ from ete3 import Tree,NCBITaxa
 import numpy as np
 import xarray as xr
 import pandas as pd
+import matplotlib.pyplot as plt
 
 from . import seqdbutils
 #class SeqFamData:
@@ -71,3 +72,40 @@ def build_seqxds(vpwxracc_fpathstr,dbpathstr,vpwxrafull_fpathstr=None):
     #mergeds=xr.Dataset(data_vars={'vpwxra':vpwxracc})
     mergeds['taxra']=taxra
     return mergeds
+
+import matplotlib.pyplot as plt
+def plot_ebounds(mds,dbfpath,dbseqidx,scorefield='normscore',start_stops='avg',ax=None):
+    assert (scorefield in ['normscore','score'])
+    assert (start_stops in ['avg','mdn'])
+    start_yid=f'{start_stops}_start'
+    stop_yid=f'{start_stops}_stop'
+    if ax is None:
+        _,ax=plt.subplots(1,1)
+    seqid=mds.dbseq.values[dbseqidx]
+    ax.plot(mds.vpwxra_cc.loc[seqid,:,scorefield],mds.vpwxra_cc.loc[seqid,:,start_yid],'g.',marker='o',ms=10)
+    ax.plot(mds.vpwxra_cc.loc[seqid,:,scorefield],mds.vpwxra_cc.loc[seqid,:,stop_yid],'g.',marker='s',ms=10)
+    ax.plot(mds.vpwxra_full.loc[seqid,:,scorefield],mds.vpwxra_full.loc[seqid,:,start_yid],'b.',marker='o',ms=7)
+    ax.plot(mds.vpwxra_full.loc[seqid,:,scorefield],mds.vpwxra_full.loc[seqid,:,stop_yid],'b.',marker='s',ms=7)
+
+    fycoord=.55
+    ax.text(0.3,fycoord,mds.dbseq.values[dbseqidx],size=20,transform=ax.transAxes)
+    fycoord-=.06
+    ax.grid(True,axis='y')
+    conn=seqdbutils.gracefuldbopen(dbfpath)
+    c=conn.cursor()
+
+    c.execute('''SELECT * FROM PROTEINGBS WHERE acc=(?)''',(seqid,))
+    pgbrow=c.fetchone()
+    pgb=pickle.loads(pgbrow['pklgbsr'])
+    ax.text(0.3,fycoord,f'seqlen={len(pgb.seq)}',size=14,transform=ax.transAxes)
+    c.execute('''SELECT * FROM HMMERSEQDATA WHERE acc=(?)''',(seqid,))
+    hrows=c.fetchall()
+    for hrow in hrows:
+        fycoord-=.06
+        alstartenv=hrow['align_start']-hrow['hmm_start'] #switches to zero-based
+        alstopenv=hrow['align_stop']-(hrow['motifsize']-hrow['hmm_stop']+1) #switches to zero-based
+        #htext=f"{hrow['motifacc']}: {hrow['align_start']}-{hrow['align_stop']} ({hrow['env_start']}-{hrow['env_stop']} )"
+        htext=f"{hrow['motifacc']}: {hrow['align_start']}-{hrow['align_stop']} ({alstartenv}-{alstopenv} )"
+        ax.text(0.3,fycoord,htext,size=14,transform=ax.transAxes)
+    conn.close()
+    

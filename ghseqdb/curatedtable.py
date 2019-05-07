@@ -71,6 +71,8 @@ def do_register_aln(pgbseq,curatedrow,eformat,alnreg,mode,xtalseqstr=None):
             alnreg.message+=f'-->match to genbank seq failed for {curatedrow["pdbid"]} for eformat {alnreg.enzyme_format}\n'
     elif mode=='xtal':
         xstrmatch=seqRE.search(xtalseqstr)
+        #if alnreg.acc=='AAN68245':
+        #    import pdb;pdb.set_trace()
         if xstrmatch:
             max_ratio=0.95
             len_maxratio=0
@@ -125,12 +127,6 @@ def do_register_aln(pgbseq,curatedrow,eformat,alnreg,mode,xtalseqstr=None):
             alnreg.message+=f' eformat {alnreg.enzyme_format}: ({alnreg.start},{alnreg.stop})'
         else:
             alnreg.message+=f'|||||||||FAILED to find register for {curatedrow["pdbid"]} despite enabling fuzzy matching|||||||||||'
-    #do a final clean-up to round to start or stop of sequence--
-#    if alnreg.success:
-#        if alnreg.start<3:
-#            alnreg.start=0
-#        if alnreg.stop>len(pgbseq)-3:
-#            alnreg.stop=len(pgbseq)-1
     return alnreg
  
 
@@ -254,6 +250,7 @@ def build_curatedxtaltable(dbpathstr,xtalxlfpath,sheet_name="Sheet1",xtalsdb_rel
     xtalsdbpath=None
     if xtalsdb_relpath=='up1':
         xtalsdbpath= dbpath.resolve().parent.parent / xtalsdb_name
+    #if entry_status in ['update_required','absent']:
     align_proteingbs_seq(conn,xtalsdbpath)
     conn.commit()
     conn.close()

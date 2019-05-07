@@ -6,7 +6,7 @@ from kmslib.hmmerkools import hmmsearchparser
 def build_hmmertable(dbpathstr,hmmsrchfpathstr):
     """adds HMMERSEQDATA table with hmmersearch. hmmsearch results file typically built using
     
-    hmmsearch --noali --E 1e-1 --incE 1e-1 [pfamfile] [seqfile] > [outfile]
+    hmmsearch --noali -E 1e-1 --incE 1e-1 [pfamfile] [seqfile] > [outfile]
 
     Argumenst:
         dbpathstr: path to db

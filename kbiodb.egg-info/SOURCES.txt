@@ -4,6 +4,7 @@ ghseqdb/cazytable.py
 ghseqdb/ccrefiner.py
 ghseqdb/cctable.py
 ghseqdb/curatedtable.py
+ghseqdb/frozentable.py
 ghseqdb/hmmertable.py
 ghseqdb/pgbtable.py
 ghseqdb/pwaligner.py
