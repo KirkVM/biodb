@@ -115,7 +115,7 @@ def ebound_xtaleval(mds,dbpathstr,scorefield='normscore',start_stops='avg'):
     numrows=math.ceil(numseqs/3)
     fig,axs=plt.subplots(numrows,3,figsize=(30,7*numrows))
     for seqnum,ax in zip(range(numseqs),np.ravel(axs)):
-        plot_ebounds(mdsxtal,dbpathstr,seqnum,ax=ax)
+        plot_ebounds(mds,dbpathstr,seqnum,ax=ax)
 
 def get_maxesize(dbpathstr):
     conn=seqdbutils.gracefuldbopen(dbpathstr)
@@ -147,15 +147,14 @@ def get_esizeprior(dbpathstr,max_esize=5000):
     ccmed=int(round(np.median(cc_sizes),0))
     conn.close()
 
-#    seqpos=np.arange(0,maxlength,1)
-#    spgrid=np.meshgrid(seqpos,seqpos)
+#    maxset=student(v1,60,loc=0,scale=40)
     lseg=np.array([1,ccmed+1])-np.array([0,ccmed])
     probs=[]
     coolarr=np.zeros((max_esize,max_esize))
     probs=[]
-    for yoffset in range(101):
+    for yoffset in range(121):
         v1=np.cross(lseg,np.array([0,ccmed+yoffset])-np.array([0,ccmed]))/np.linalg.norm(lseg)
-        v2=student.pdf(v1,40,loc=0,scale=35)
+        v2=student.pdf(v1,60,loc=0,scale=40)
         probs.append(v2)
         for xpos in range(max_esize):
             if (ccmed-yoffset+xpos >=0) and (ccmed-yoffset+xpos<max_esize):
@@ -166,16 +165,6 @@ def get_esizeprior(dbpathstr,max_esize=5000):
     unders=coolarr<minset
     coolarr[unders]=minset
     return coolarr
-#    for xg,yg in zip(spgrid[0].ravel(),spgrid[1].ravel()):
-#        v1=np.cross(lseg,np.array([xg,yg])-np.array([0,ccmed]))/np.linalg.norm(lseg)
-#        d2mid=abs(v1)
-#        if d2mid>100:
-#            v2=0
-#        else:
-#            v2=student.pdf(v1,40,loc=0,scale=35)
-#        vs.append(v2)
-#    psize_prior=np.reshape(vs,spgrid[0].shape)
-#    return psize_prior
 
 def calc_prob_grid(acc,esize_prior,dbpathstr,mds,motif_dict={'PF00150':[16,32]}):
     conn=seqdbutils.gracefuldbopen(dbpathstr)
@@ -192,7 +181,7 @@ def calc_prob_grid(acc,esize_prior,dbpathstr,mds,motif_dict={'PF00150':[16,32]})
     probdr.loc[:,:,'y']=spgrid[1]
     probdr.loc[:,:,'esize_prior']=esize_prior[:genelength,:genelength]
     
-    print('here')
+    maxset=student.pdf(0,20,loc=0,scale=30)
     c.execute('''SELECT * FROM HMMERSEQDATA WHERE acc=(?)''',(acc,))
     hrows=c.fetchall()
     for hrow in hrows:
@@ -203,30 +192,27 @@ def calc_prob_grid(acc,esize_prior,dbpathstr,mds,motif_dict={'PF00150':[16,32]})
             exp_cext=motif_dict[hrow['motifacc']][1]
             exp_estart=pfam_begin-exp_next
             exp_estop=pfam_end+exp_cext
+            print(pfam_begin,exp_estart)
+            print(pfam_end,exp_estop)
             student_dict={}
             temparr=np.zeros((spgrid[0].shape))
-            for xoffset in range(50):#xg in np.arange(exp_estart-50,exp_estart+50,1):
-                for yoffset in range(50):
+            for xoffset in range(60):#xg in np.arange(exp_estart-50,exp_estart+50,1):
+                for yoffset in range(60):
                     dist2peak=int(round(np.linalg.norm(np.array([exp_estart-xoffset,exp_estop-yoffset])-np.array([exp_estart,exp_estop])),0))
 #                    v2=student.pdf(dist2peak,10,loc=0,scale=20)
                     if dist2peak in student_dict.keys():
                         v2=student_dict[dist2peak]
                     else:
-                        v2=student.pdf(dist2peak,10,loc=0,scale=20)
+                        v2=student.pdf(dist2peak,20,loc=0,scale=30)
                         student_dict[dist2peak]=v2
-                    if exp_estop-yoffset>=0 and exp_estart-xoffset>=0:
-                        temparr[exp_estop-yoffset,exp_estart-xoffset]=v2
+                    exp_estarts=[exp_estart-xoffset,exp_estart+xoffset]
+                    exp_estops=[exp_estop-yoffset,exp_estop+yoffset]
+                    for x0 in exp_estarts:
+                        for y0 in exp_estops:
+                            if x0>=0 and x0<genelength and y0>=0 and y0<genelength:
+                                temparr[y0,x0]=v2
 
-                    if exp_estop+yoffset<spgrid[0].shape[0] and exp_estart+xoffset>=0:
-                        temparr[exp_estop+yoffset,exp_estart-xoffset]=v2
-
-                    if exp_estop-yoffset>=0 and exp_estart+xoffset<spgrid[0].shape[0]:
-#                        print(exp_estart,xoffset)
-                        temparr[exp_estop-yoffset,exp_estart+xoffset]=v2
-
-                    if exp_estop+yoffset<spgrid[0].shape[0] and exp_estart+xoffset<spgrid[0].shape[0]:
-                        temparr[exp_estop+yoffset,exp_estart+xoffset]=v2
-            minset=np.min([student_dict[x] for x in student_dict.keys()])
+            minset=min(1e-3*maxset,np.min([student_dict[x] for x in student_dict.keys()]))
             junk=temparr<minset
             temparr[junk]=minset
             probdr.loc[:,:,'pfam_prior']+=temparr
@@ -256,7 +242,7 @@ def calc_prob_grid(acc,esize_prior,dbpathstr,mds,motif_dict={'PF00150':[16,32]})
 #                probdr.loc[:,:,'data_likelihood'][yg,xg]+=1e3*studval*1e3**(ns-0.1)
         probdr.loc[:,:,'prob_data']+=temparr#1e3*temparr*1e3**(ns-0.1)
     probdr.loc[:,:,'sum_prior']=probdr.loc[:,:,'esize_prior']+probdr.loc[:,:,'pfam_prior']
-     
+    
     probdr.loc[:,:,'data_likelihood']=probdr.loc[:,:,'prob_data']*probdr.loc[:,:,'sum_prior']#1e3*temparr*1e3**(ns-0.1)
     probdr.loc[:,:,'posterior']=probdr.loc[:,:,'data_likelihood']/np.sum(probdr.loc[:,:,'data_likelihood'])
     return probdr
