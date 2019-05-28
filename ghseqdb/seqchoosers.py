@@ -115,7 +115,7 @@ def ebound_xtaleval(mds,dbpathstr,scorefield='normscore',start_stops='avg'):
     numrows=math.ceil(numseqs/3)
     fig,axs=plt.subplots(numrows,3,figsize=(30,7*numrows))
     for seqnum,ax in zip(range(numseqs),np.ravel(axs)):
-        plot_ebounds(mds,dbpathstr,seqnum,ax=ax)
+        plot_ebounds(mdsxtal,dbpathstr,seqnum,ax=ax)
 
 def get_maxesize(dbpathstr):
     conn=seqdbutils.gracefuldbopen(dbpathstr)
@@ -166,7 +166,7 @@ def get_esizeprior(dbpathstr,max_esize=5000):
     coolarr[unders]=minset
     return coolarr
 
-def calc_prob_grid(acc,esize_prior,dbpathstr,mds,motif_dict={'PF00150':[16,32]}):
+def calc_prob_grid(acc,esize_prior,dbpathstr,mds,motif_dict={'PF00150':[16,32]},exclude_self=False):
     conn=seqdbutils.gracefuldbopen(dbpathstr)
     c=conn.cursor()
     c.execute('''SELECT * FROM PROTEINGBS WHERE acc=(?)''',(acc,))
@@ -221,6 +221,8 @@ def calc_prob_grid(acc,esize_prior,dbpathstr,mds,motif_dict={'PF00150':[16,32]})
 #    probdr.loc[:,:,'data_likelihood']+=1e-3
     student_dict={}
     for cs in mds.curateseq:
+        if exclude_self and cs.values.item(0)==acc:
+            continue
         temparr=np.zeros((spgrid[0].shape))
         x=int(round(mds.vpwxra_cc.loc[acc,cs,'avg_start'].values.item(0),0))
         y=int(round(mds.vpwxra_cc.loc[acc,cs,'avg_stop'].values.item(0),0))
@@ -247,3 +249,48 @@ def calc_prob_grid(acc,esize_prior,dbpathstr,mds,motif_dict={'PF00150':[16,32]})
     probdr.loc[:,:,'posterior']=probdr.loc[:,:,'data_likelihood']/np.sum(probdr.loc[:,:,'data_likelihood'])
     return probdr
 #        hs.append(v2)   
+
+import matplotlib.gridspec as gridspec
+import skimage
+def talign_plot(mplt1,mplt2,pwidf):
+#from itertools import combinations_with_replacement
+    numleaves_t1=len(mplt1.ordered_leaves)
+    numleaves_t2=len(mplt2.ordered_leaves)
+    inter_array=np.zeros((numleaves_t1,numleaves_t2))
+    for a in range(numleaves_t1):
+        for b in range(numleaves_t2):
+            a_accs=mplt1.ordered_leaves[a].accs
+            b_accs=mplt2.ordered_leaves[b].accs
+            inter_array[a,b]=np.log(pwidf.loc[a_accs[0],b_accs[0]])
+#            subdf=pwidf.loc[a_accs,b_accs]
+#            avgval=np.log(subdf.mean().mean())
+#            inter_array[a,b]=avgval
+    startimg=skimage.img_as_float(inter_array)
+#    cool2=skimage.exposure.rescale_intensity(startimg,in_range=(startimg.min(),3.95))
+    cool2=skimage.exposure.rescale_intensity(startimg,in_range=(3.2,4.6))
+    print(startimg.min(),startimg.max())
+    print(cool2.min(),cool2.max())
+#    prin
+#    cool2=startimg
+
+    fig=plt.figure(figsize=(20,20))
+    plot_grid=gridspec.GridSpec(2,2,wspace=0.0,hspace=0.0)
+    ax1=plt.Subplot(fig,plot_grid[1])
+    ax2=plt.Subplot(fig,plot_grid[2])
+    ax3=plt.Subplot(fig,plot_grid[3])
+#mpltree.orientation='top'
+#mpltree.orientation='left'
+    fig.add_subplot(ax1)
+    fig.add_subplot(ax3)
+    fig.add_subplot(ax2)
+    mplt2.render(ax=ax1,orientation='top',tree_lw=1.0)#,create_leaf_names=True,draw_leaf_names=True);
+
+    mplt1.render(ax=ax2,orientation='left',tree_lw=1.0)#,create_leaf_names=True,draw_leaf_names=True);
+    ax3.imshow(cool2,aspect='auto')
+    ax3.set_xticks([])
+    ax3.set_yticks([])
+    ax3.axis('off')
+    ax3.spines['left'].set_visible(False)
+    ax1.axis('off')
+    ax2.axis('off');
+    plt.tight_layout()

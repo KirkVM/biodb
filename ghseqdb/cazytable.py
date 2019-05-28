@@ -13,7 +13,7 @@ def build_cazytable(ghfam,dbpathstr,drop_old=False):
     Returns:
         sqlite db (also writes out pseq fasta file)
     """    
-    conn=seqdbutils.gracefuldbopen(dbpathstr) 
+    conn=seqdbutils.gracefuldbopen(dbpathstr,create_new=True) 
     c=conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS CAZYSEQDATA (acc text, version text, scrapedate text, \
                 subfam text, extragbs text, ecs text, pdbids text, uniprotids text)''')

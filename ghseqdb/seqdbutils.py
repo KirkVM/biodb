@@ -2,7 +2,7 @@
 from pathlib import Path
 import sqlite3,atexit,sys
 
-def gracefuldbopen(dbpathstr):
+def gracefuldbopen(dbpathstr,create_new=False):
     ''' returns a connection with after doing some boilerplate'''
         #make path if needed....
         #if os.path.exists...
@@ -18,7 +18,14 @@ def gracefuldbopen(dbpathstr):
         conn.row_factory=sqlite3.Row
         return conn
     except:
-        raise Exception(f"could not connect to {dbpath.name}")
+        if create_new:
+            print(f'creating new database {dbpath.name} at {dbpath.parent}')
+            conn=sqlite3.connect(dbpath)
+            atexit.register(conn.close)
+            conn.row_factory=sqlite3.Row
+            return conn
+        else:
+            raise Exception(f"could not connect to {dbpath.name}")
 
 def check_tables_exist(conn,tblnames):
     c=conn.cursor()
