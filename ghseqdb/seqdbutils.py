@@ -13,7 +13,7 @@ def gracefuldbopen(dbpathstr,create_new=False):
         else:
             print(f'creating new database {dbpath.name} at {dbpath.parent}')
     try:
-        conn=sqlite3.connect(dbpath)
+        conn=sqlite3.connect(dbpathstr)
         atexit.register(conn.close)
         conn.row_factory=sqlite3.Row
         return conn
