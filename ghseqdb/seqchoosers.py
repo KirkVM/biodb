@@ -336,3 +336,33 @@ def talign_plot(mplt1,mplt2,pwidf):
     ax1.axis('off')
     ax2.axis('off');
     plt.tight_layout()
+
+
+def get_avg_exts(ghfam,dbpath):
+    motifselection=core_motifs[ghfam][0]
+    cc_sizes=[]
+    n_exts=[]
+    c_exts=[]
+    conn=sqlite3.connect(dbpath)
+    conn.row_factory=sqlite3.Row
+    c=conn.cursor()
+    c.execute('''SELECT * FROM CURATEDXTALS''')
+    rows=c.fetchall()
+    for row in rows:
+        acc=row['acc']
+        start=row['pgbsr_ccstart']
+        stop=row['pgbsr_ccstop']
+        cc_sizes.append(stop-start+1)
+        c.execute('''SELECT * FROM HMMERSEQDATA WHERE acc=(?)''',(acc,))
+        hrows=c.fetchall()
+        for hrow in hrows:
+            if hrow['motifacc']==motifselection:
+                halstart=hrow['align_start']-1
+                halstop=hrow['align_stop']-2
+                if halstart>=start and halstop<=stop:
+                    pfam_begin=hrow['align_start']-hrow['hmm_start']
+                    pfam_end=hrow['align_stop']+(hrow['motifsize']-hrow['hmm_stop'])-1
+                    n_exts.append(pfam_begin-start)
+                    c_exts.append(stop-pfam_end)    
+    conn.close()
+    return np.median(cc_sizes),np.median(n_exts),np.median(c_exts)
