@@ -207,9 +207,15 @@ def build_pfam_expmatrix(parray,expstart,expstop):
     return parray
 
 addl_motifs={}
-core_motifs={'GH5':['PF00150',[16,32]],'GH43':['PF04616',[15,15]]} #Glyco_hydro_5,Glyco_hydro_43
-addl_motifs.update({'GH5':{'PF18448':[10,10] }}) #CBM_X2
-addl_motifs.update({'GH43':{'PF16369':[10,10],'PF17851':[10,10]}}) #GH43_C,#GH43_C2
+core_motifs={'GH5':['PF00150',[16,32]],'GH43':['PF04616',[2,13]],'GH8':['PF01270',[11,8]]} #Glyco_hydro_5,Glyco_hydro_43,Glyco_hydro_8
+core_motifs.update({'GH9':['PF00759',[3,9]],'GH48':['PF02011',[24,32]],'AA10':['PF03067',[0,3]]})#Glyco_hydro_9,Glyco_hydro_48
+addl_motifs.update({'GH5':{'PF18448':[5,5] }}) #CBM_X2
+addl_motifs.update({'GH43':{'PF16369':[5,5],'PF17851':[5,5],'PF07081':[5,5],'PF14200':[5,5],'PF05270':[5,5],'PF00754':[5,5]} }) 
+#GH43_C,GH43_C2,DUF (always seen with 17851),RicinB_lectin_2,AbfB,F5_F8_type_C
+addl_motifs.update({'GH8':{}})
+addl_motifs.update({'GH9':{'PF02927':[5,5],'PF00942':[5,5]}})#CelD_N,CBM_3
+addl_motifs.update({'GH48':{}})
+addl_motifs.update({'AA10':{}})
 def calc_prob_grid(acc,ghfam,esize_prior,dbpathstr,mds,eform='cc',exclude_self=False):
     conn=seqdbutils.gracefuldbopen(dbpathstr)
     c=conn.cursor()
