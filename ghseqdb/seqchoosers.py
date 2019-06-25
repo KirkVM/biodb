@@ -129,44 +129,88 @@ def get_maxesize(dbpathstr):
     conn.close()
     return maxlength
 
-def get_esizeprior(dbpathstr,max_esize=5000):
-    if max_esize is None: #find it ourselves
-        maxlength=get_maxesize(dbpathstr)        
-    else:
-        maxlength=max_esize
-    
-    conn=seqdbutils.gracefuldbopen(dbpathstr)
-    c=conn.cursor()
-    c.execute('''SELECT * FROM CURATEDXTALS''')
-    rows=c.fetchall()
-    cc_sizes=[]
-    for row in rows:
-        start=row['pgbsr_ccstart']
-        stop=row['pgbsr_ccstop']
-        cc_sizes.append(stop-start+1)
-    ccmed=int(round(np.median(cc_sizes),0))
-    conn.close()
-
-#    maxset=student(v1,60,loc=0,scale=40)
-    lseg=np.array([1,ccmed+1])-np.array([0,ccmed])
+def build_prior_array(median,shape,scale,size):
+    coolarr=np.zeros((size,size))
     probs=[]
-    coolarr=np.zeros((max_esize,max_esize))
-    probs=[]
-    for yoffset in range(121):
-        v1=np.cross(lseg,np.array([0,ccmed+yoffset])-np.array([0,ccmed]))/np.linalg.norm(lseg)
-        v2=student.pdf(v1,60,loc=0,scale=40)
+    lseg=np.array([1,median+1])-np.array([0,median])
+    for yoffset in range(2*shape):
+        v1=np.cross(lseg,np.array([0,median+yoffset])-np.array([0,median]))/np.linalg.norm(lseg)
+        v2=student.pdf(v1,shape,loc=0,scale=scale)
         probs.append(v2)
-        for xpos in range(max_esize):
-            if (ccmed-yoffset+xpos >=0) and (ccmed-yoffset+xpos<max_esize):
-                coolarr[ccmed-yoffset+xpos,xpos]=v2
-            if ccmed+yoffset+xpos<max_esize:
-                coolarr[ccmed+yoffset+xpos,xpos]=v2
+        for xpos in range(size):
+            if (median-yoffset+xpos >=0) and (median-yoffset+xpos<size):
+                coolarr[median-yoffset+xpos,xpos]=v2
+            if median+yoffset+xpos<size:
+                coolarr[median+yoffset+xpos,xpos]=v2
     minset=np.min(probs)
     unders=coolarr<minset
     coolarr[unders]=minset
     return coolarr
+ 
 
-def calc_prob_grid(acc,esize_prior,dbpathstr,mds,motif_dict={'PF00150':[16,32]},exclude_self=False):
+def get_esizeprior(dbpathstr,max_esize=5000,eform='cc'):
+    assert (eform in ['cc','full','both']),'eform argument invalid ("cc","full", or "both")'
+    conn=seqdbutils.gracefuldbopen(dbpathstr)
+    c=conn.cursor()
+    c.execute('''SELECT * FROM CURATEDXTALS''')
+    rows=c.fetchall()
+    ccsizes=[]
+    fullsizes=[]
+    for row in rows:
+        ccstart=row['pgbsr_ccstart']
+        ccstop=row['pgbsr_ccstop']
+        ccsizes.append(ccstop-ccstart+1)
+        if eform in ['full','both']:
+            fullstart=row['pgbsr_fullstart']
+            fullstop=row['pgbsr_fullstop']
+            if abs(fullstart-ccstart)>5 or abs(fullstop-ccstop)>5:
+                fullsizes.append(fullstop-fullstart+1)
+    ccmedian=int(round(np.median(ccsizes),0))
+    cc_shape=int((5/6)*max(0.15*max(ccsizes),max(ccsizes)-ccmedian,ccmedian-min(ccsizes)))
+    cc_scale=int(2*cc_shape/3)
+    if eform in ['full','both']:
+        fullmedian=int(round(np.median(fullsizes),0))
+        full_shape=int((5/6)*max(0.15*max(fullsizes),max(fullsizes)-fullmedian,fullmedian-min(fullsizes)))
+        full_scale=int(2*full_shape/3)
+    conn.close()
+
+    cc_arr=build_prior_array(ccmedian,cc_shape,cc_scale,max_esize)
+    if eform in ['full','both']:
+        full_arr=build_prior_array(fullmedian,full_shape,full_scale,max_esize)
+    if eform=='cc':
+        return cc_arr
+    elif eform=='full':
+        return full_arr
+    return cc_arr+full_arr
+
+def build_pfam_expmatrix(parray,expstart,expstop):
+    student_dict={}
+    maxset=student.pdf(0,20,loc=0,scale=30) #what is this????
+    for xoffset in range(60):#xg in np.arange(exp_estart-50,exp_estart+50,1):
+        for yoffset in range(60):
+            dist2peak=int(round(np.linalg.norm(np.array([expstart-xoffset,expstop-yoffset])-np.array([expstart,expstop])),0))
+#           v2=student.pdf(dist2peak,10,loc=0,scale=20)
+            if dist2peak in student_dict.keys():
+                v2=student_dict[dist2peak]
+            else:
+                v2=student.pdf(dist2peak,20,loc=0,scale=30)
+                student_dict[dist2peak]=v2
+            exp_estarts=[expstart-xoffset,expstart+xoffset]
+            exp_estops=[expstop-yoffset,expstop+yoffset]
+            for x0 in exp_estarts:
+                for y0 in exp_estops:
+                    if x0>=0 and x0<parray.shape[0] and y0>=0 and y0<parray.shape[0]:
+                        parray[y0,x0]=v2
+    minset=min(1e-3*maxset,np.min([student_dict[x] for x in student_dict.keys()]))
+    junk=parray<minset
+    parray[junk]=minset
+    return parray
+
+addl_motifs={}
+core_motifs={'GH5':['PF00150',[16,32]],'GH43':['PF04616',[15,15]]} #Glyco_hydro_5,Glyco_hydro_43
+addl_motifs.update({'GH5':{'PF18448':[10,10] }}) #CBM_X2
+addl_motifs.update({'GH43':{'PF16369':[10,10],'PF17851':[10,10]}}) #GH43_C,#GH43_C2
+def calc_prob_grid(acc,ghfam,esize_prior,dbpathstr,mds,eform='cc',exclude_self=False):
     conn=seqdbutils.gracefuldbopen(dbpathstr)
     c=conn.cursor()
     c.execute('''SELECT * FROM PROTEINGBS WHERE acc=(?)''',(acc,))
@@ -181,52 +225,55 @@ def calc_prob_grid(acc,esize_prior,dbpathstr,mds,motif_dict={'PF00150':[16,32]},
     probdr.loc[:,:,'y']=spgrid[1]
     probdr.loc[:,:,'esize_prior']=esize_prior[:genelength,:genelength]
     
-    maxset=student.pdf(0,20,loc=0,scale=30)
     c.execute('''SELECT * FROM HMMERSEQDATA WHERE acc=(?)''',(acc,))
     hrows=c.fetchall()
+    conn.close()
+    #first iterate through and find cc data...
+    exp_core_begin=None
+    exp_core_end=None
     for hrow in hrows:
-        if hrow['motifacc'] in motif_dict.keys():
-            pfam_begin=hrow['align_start']-hrow['hmm_start']
-            pfam_end=hrow['align_stop']+(hrow['motifsize']-hrow['hmm_stop'])-1
-            exp_next=motif_dict[hrow['motifacc']][0]
-            exp_cext=motif_dict[hrow['motifacc']][1]
-            exp_estart=pfam_begin-exp_next
-            exp_estop=pfam_end+exp_cext
-            print(pfam_begin,exp_estart)
-            print(pfam_end,exp_estop)
-            student_dict={}
-            temparr=np.zeros((spgrid[0].shape))
-            for xoffset in range(60):#xg in np.arange(exp_estart-50,exp_estart+50,1):
-                for yoffset in range(60):
-                    dist2peak=int(round(np.linalg.norm(np.array([exp_estart-xoffset,exp_estop-yoffset])-np.array([exp_estart,exp_estop])),0))
-#                    v2=student.pdf(dist2peak,10,loc=0,scale=20)
-                    if dist2peak in student_dict.keys():
-                        v2=student_dict[dist2peak]
-                    else:
-                        v2=student.pdf(dist2peak,20,loc=0,scale=30)
-                        student_dict[dist2peak]=v2
-                    exp_estarts=[exp_estart-xoffset,exp_estart+xoffset]
-                    exp_estops=[exp_estop-yoffset,exp_estop+yoffset]
-                    for x0 in exp_estarts:
-                        for y0 in exp_estops:
-                            if x0>=0 and x0<genelength and y0>=0 and y0<genelength:
-                                temparr[y0,x0]=v2
-
-            minset=min(1e-3*maxset,np.min([student_dict[x] for x in student_dict.keys()]))
-            junk=temparr<minset
-            temparr[junk]=minset
+        motifacc=hrow['motifacc']
+        if motifacc == core_motifs[ghfam][0]:
+            pfam_core_begin=hrow['align_start']-hrow['hmm_start']
+            pfam_core_end=hrow['align_stop']+(hrow['motifsize']-hrow['hmm_stop'])-1
+            exp_next=core_motifs[ghfam][1][0] #nt-extension
+            exp_cext=core_motifs[ghfam][1][1] #ct-extension
+            exp_core_begin=pfam_core_begin-exp_next
+            exp_core_end=pfam_core_end+exp_cext
+            temparr=build_pfam_expmatrix(np.zeros((spgrid[0].shape)),exp_core_begin,exp_core_end)
             probdr.loc[:,:,'pfam_prior']+=temparr
 
-    conn.close()
+    addl_motif_accs=list(addl_motifs[ghfam].keys())
+    if exp_core_begin is not None and exp_core_end is not None and eform=='full':
+        for hrow in hrows:
+            motifacc=hrow['motifacc']
+            if motifacc in addl_motif_accs:
+                print(motifacc)
+                pfam_motif_begin=hrow['align_start']-hrow['hmm_start']
+                pfam_motif_end=hrow['align_stop']+(hrow['motifsize']-hrow['hmm_stop'])-1
+                if pfam_motif_begin<exp_core_begin and pfam_motif_end<exp_core_end:
+                    exp_motif_begin=pfam_motif_begin-addl_motifs[ghfam][motifacc][0]
+                    temparr=build_pfam_expmatrix(np.zeros((spgrid[0].shape)),exp_motif_begin,exp_core_end)
+                    probdr.loc[:,:,'pfam_prior']+=temparr
+                if pfam_motif_begin>exp_core_begin and pfam_motif_end>exp_core_end:
+                    exp_motif_end=pfam_motif_end+addl_motifs[ghfam][motifacc][1]
+                    temparr=build_pfam_expmatrix(np.zeros((spgrid[0].shape)),exp_core_begin,exp_motif_end)
+                    probdr.loc[:,:,'pfam_prior']+=temparr
+
 #    probdr.loc[:,:,'data_likelihood']+=1e-3
     student_dict={}
+    if eform=='cc':
+        efvpwxra=mds.vpwxra_cc
+    elif eform=='full':
+        efvpwxra=mds.vpwxra_full
+
     for cs in mds.curateseq:
         if exclude_self and cs.values.item(0)==acc:
             continue
         temparr=np.zeros((spgrid[0].shape))
-        x=int(round(mds.vpwxra_cc.loc[acc,cs,'avg_start'].values.item(0),0))
-        y=int(round(mds.vpwxra_cc.loc[acc,cs,'avg_stop'].values.item(0),0))
-        ns=mds.vpwxra_cc.loc[acc,cs,'normscore']
+        x=int(round(efvpwxra.loc[acc,cs,'avg_start'].values.item(0),0))
+        y=int(round(efvpwxra.loc[acc,cs,'avg_stop'].values.item(0),0))
+        ns=efvpwxra.loc[acc,cs,'normscore']
         for xg in np.arange(x-10,x+10,1):
             for yg in np.arange(y-10,y+10,1):#,seqgrid[1].ravel()):
                 if xg<0 or yg<0 or xg>=spgrid[0].shape[0] or yg>=spgrid[0].shape[0]:
@@ -238,18 +285,13 @@ def calc_prob_grid(acc,esize_prior,dbpathstr,mds,motif_dict={'PF00150':[16,32]},
                     studval=student.pdf(dist2peak,5,loc=0,scale=5)
                     student_dict[dist2peak]=studval
                     temparr[yg,xg]=1e3*student_dict[dist2peak]*1e3**(ns-0.1)
-                    #temparr[yg,xg]=studval
-#        temparr=1e3*studval*1e3**(ns-0.1)
-#                studval=student.pdf(np.linalg.norm(np.array([xg,yg])-np.array([x,y])),5,loc=0,scale=5)
-#                probdr.loc[:,:,'data_likelihood'][yg,xg]+=1e3*studval*1e3**(ns-0.1)
         probdr.loc[:,:,'prob_data']+=temparr#1e3*temparr*1e3**(ns-0.1)
     probdr.loc[:,:,'sum_prior']=probdr.loc[:,:,'esize_prior']+probdr.loc[:,:,'pfam_prior']
     
     probdr.loc[:,:,'data_likelihood']=probdr.loc[:,:,'prob_data']*probdr.loc[:,:,'sum_prior']#1e3*temparr*1e3**(ns-0.1)
     probdr.loc[:,:,'posterior']=probdr.loc[:,:,'data_likelihood']/np.sum(probdr.loc[:,:,'data_likelihood'])
     return probdr
-#        hs.append(v2)   
-
+#
 import matplotlib.gridspec as gridspec
 import skimage
 def talign_plot(mplt1,mplt2,pwidf):

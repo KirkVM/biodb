@@ -222,6 +222,7 @@ def build_curatedxtaltable(dbpathstr,xtalxlfpath,sheet_name="Sheet1",xtalsdb_rel
     xtalfname=os.path.basename(xtalxlfpath)
     xtalfile_mtime=os.stat(xtalxlfpath).st_mtime
     dbpath=Path(dbpathstr)
+    print('hi')
 #    return xtaldf
     conn=seqdbutils.gracefuldbopen(dbpath)
     c=conn.cursor()
@@ -231,6 +232,7 @@ def build_curatedxtaltable(dbpathstr,xtalxlfpath,sheet_name="Sheet1",xtalsdb_rel
                 ntfullpos int, ctfullpos int, ntfullseq text, ctfullseq text,\
                 pgbsr_ccstart int, pgbsr_ccstop int, pgbsr_fullstart int, pgbsr_fullstop int, \
                 enable_fuzzy int, pgbsr_seqchecksum text)''')
+    conn.commit()
     for _,xrow in xtaldf.dropna(subset=['curated_pdb']).iterrows():
         assert(type(xrow['cc_startnum']) in (float,int)),"cc_startnum type not numeric"
         entry_status=check_cxstatus(c,xrow,xtalfile_mtime)
