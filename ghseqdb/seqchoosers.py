@@ -209,6 +209,8 @@ def build_pfam_expmatrix(parray,expstart,expstop):
 addl_motifs={}
 core_motifs={'GH5':['PF00150',[16,32]],'GH43':['PF04616',[2,13]],'GH8':['PF01270',[11,8]]} #Glyco_hydro_5,Glyco_hydro_43,Glyco_hydro_8
 core_motifs.update({'GH9':['PF00759',[3,9]],'GH48':['PF02011',[24,32]],'AA10':['PF03067',[0,3]]})#Glyco_hydro_9,Glyco_hydro_48
+core_motifs.update({'AA9':['PF03443',[0,10]],'GH10':['PF00331',[3,2]],'GH26':['PF02156',[5,17]]})#Glyco_hydro_61,Glyco_hydro_10,Glyco_hydro_26
+core_motifs.update({'GH30':['PF02055',[-17,67]],'GH6':['PF01341',[5,5]]})#Glyco_hydro_30,Glyco_hydro_6
 addl_motifs.update({'GH5':{'PF18448':[5,5] }}) #CBM_X2
 addl_motifs.update({'GH43':{'PF16369':[5,5],'PF17851':[5,5],'PF07081':[5,5],'PF14200':[5,5],'PF05270':[5,5],'PF00754':[5,5]} }) 
 #GH43_C,GH43_C2,DUF (always seen with 17851),RicinB_lectin_2,AbfB,F5_F8_type_C
@@ -216,6 +218,10 @@ addl_motifs.update({'GH8':{}})
 addl_motifs.update({'GH9':{'PF02927':[5,5],'PF00942':[5,5]}})#CelD_N,CBM_3
 addl_motifs.update({'GH48':{}})
 addl_motifs.update({'AA10':{}})
+addl_motifs.update({'AA9':{}})
+addl_motifs.update({'GH10':{}})
+addl_motifs.update({'GH26':{}})
+addl_motifs.update({'GH30':{'PF17189':[5,5]}}) #Glyco_hydro_30C
 def calc_prob_grid(acc,ghfam,esize_prior,dbpathstr,mds,eform='cc',exclude_self=False):
     conn=seqdbutils.gracefuldbopen(dbpathstr)
     c=conn.cursor()
@@ -273,8 +279,8 @@ def calc_prob_grid(acc,ghfam,esize_prior,dbpathstr,mds,eform='cc',exclude_self=F
     elif eform=='full':
         efvpwxra=mds.vpwxra_full
 
-    for cs in mds.curateseq:
-        if exclude_self and cs.values.item(0)==acc:
+    for cs in mds.curateseq.values:
+        if exclude_self and cs==acc:
             continue
         temparr=np.zeros((spgrid[0].shape))
         x=int(round(efvpwxra.loc[acc,cs,'avg_start'].values.item(0),0))
@@ -286,7 +292,7 @@ def calc_prob_grid(acc,ghfam,esize_prior,dbpathstr,mds,eform='cc',exclude_self=F
                     continue
                 dist2peak=np.linalg.norm(np.array([xg,yg])-np.array([x,y]))
                 if dist2peak in student_dict.keys():
-                    temparr[yg,xg]=1e3*student_dict[dist2peak]*1e3**(ns-0.1)
+                    temparr[yg,xg]=1e3*student_dict[dist2peak]*1e3**(ns.values.item(0)-0.1)
                 else:
                     studval=student.pdf(dist2peak,5,loc=0,scale=5)
                     student_dict[dist2peak]=studval

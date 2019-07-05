@@ -222,7 +222,6 @@ def build_curatedxtaltable(dbpathstr,xtalxlfpath,sheet_name="Sheet1",xtalsdb_rel
     xtalfname=os.path.basename(xtalxlfpath)
     xtalfile_mtime=os.stat(xtalxlfpath).st_mtime
     dbpath=Path(dbpathstr)
-    print('hi')
 #    return xtaldf
     conn=seqdbutils.gracefuldbopen(dbpath)
     c=conn.cursor()
