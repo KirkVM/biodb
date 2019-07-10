@@ -260,6 +260,7 @@ def calc_prob_grid(acc,ghfam,esize_prior,dbpathstr,mds,eform='cc',exclude_self=F
         for hrow in hrows:
             motifacc=hrow['motifacc']
             if motifacc in addl_motif_accs:
+#                print(motifacc,hrow['align_start'],hrow['align_stop'],hrow['hmm_stop'])
                 print(motifacc)
                 pfam_motif_begin=hrow['align_start']-hrow['hmm_start']
                 pfam_motif_end=hrow['align_stop']+(hrow['motifsize']-hrow['hmm_stop'])-1
@@ -304,6 +305,76 @@ def calc_prob_grid(acc,ghfam,esize_prior,dbpathstr,mds,eform='cc',exclude_self=F
     probdr.loc[:,:,'posterior']=probdr.loc[:,:,'data_likelihood']/np.sum(probdr.loc[:,:,'data_likelihood'])
     return probdr
 #
+import skimage
+from skimage import morphology
+
+#get number of regions with pmf>0.2
+def get_threshold_pmf_count(image,lblimage,rprops):
+    thresh_rprops=[]
+    total_prob=0.0
+    for rprop in rprops:
+        cool=np.where(lblimage==rprop.label,image,0)
+        sumregionprob=cool.sum()
+        #print(sumregionprob,rprop.intensity_image.sum())
+        assert(abs(sumregionprob-rprop.intensity_image.sum())<1e-8)
+        total_prob+=sumregionprob
+        if sumregionprob>0.2:
+            thresh_rprops.append(rprop)      
+    return total_prob,thresh_rprops
+
+def get_startstop_rois(posteriorgridimg):
+    for log_threshprob in np.linspace(-1,-5,50):
+        threshprob=np.power(10,log_threshprob)
+        markers =np.zeros_like(posteriorgridimg)
+        markers[posteriorgridimg>threshprob]=1
+        lblimage,lcnt=skimage.morphology.label(markers,connectivity=2,return_num=True)
+        rps=skimage.measure.regionprops(lblimage,intensity_image=posteriorgridimg)
+        sumprob,thresh_rprops=get_threshold_pmf_count(posteriorgridimg,lblimage,rps)
+        if sumprob>0.9:
+            break
+    return thresh_rprops
+
+def get_start_stop(probxr):
+    glength=len(probxr.start)
+    posteriorgridimg=probxr.loc[:,:,'posterior'].values.copy()
+    rps=get_startstop_rois(posteriorgridimg)
+    ssrp=None
+    if len(rps)==1:
+        ssrp=rps[0]
+    elif len(rps)==2:
+        rp1_wtdcentroid=rps[0].weighted_centroid
+        rp1_wtdlength=rp1_wtdcentroid[0]-rp1_wtdcentroid[1]
+        rp2_wtdcentroid=rps[1].weighted_centroid
+        rp2_wtdlength=rp2_wtdcentroid[0]-rp2_wtdcentroid[1]
+        ssrp=rps[0]
+        if rp2_wtdlength>rp1_wtdlength:
+            ssrp=rps[1]
+    else:
+        print('problem')
+        return None
+
+    construct_maxlength=ssrp.bbox[2]-ssrp.bbox[1]
+    construct_minlength=ssrp.bbox[0]-ssrp.bbox[3]
+    lwtdrp_intensity_image=ssrp.intensity_image.copy()#posteriorgrid.copy()
+
+    for row in range(lwtdrp_intensity_image.shape[0]):
+        for col in range(lwtdrp_intensity_image.shape[1]):
+            orig_rval=row+ssrp.bbox[0]
+            orig_cval=col+ssrp.bbox[1] 
+            sfactor=((orig_rval-orig_cval)-0.9*construct_minlength)/(construct_maxlength-construct_minlength)
+            lwtdrp_intensity_image[row][col]*=sfactor#((orig_rval-orig_cval)-0.9*construct_minlength)/(construct_maxlength-construct_minlength)
+    maxlwtd=np.argmax(lwtdrp_intensity_image)
+    max_lwtd_loc=np.unravel_index(maxlwtd,lwtdrp_intensity_image.shape)
+    bestrow,bestcol=max_lwtd_loc[0]+ssrp.bbox[0],max_lwtd_loc[1]+ssrp.bbox[1]
+    if bestcol<=6:
+        bestcol=0
+    if abs(bestrow-glength)<=12:
+        bestrow=glength
+    return bestcol,bestrow
+
+def calc_prob_density(probxr):
+    stacked=probxr.loc[:,:,'posterior'].stack(coords=('xvals','yvals'))
+    return stacked
 import matplotlib.gridspec as gridspec
 import skimage
 def talign_plot(mplt1,mplt2,pwidf):
