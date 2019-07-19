@@ -165,7 +165,6 @@ def getdnasr(srid):
             dnaseq+=fulldnastr[start:stop].upper()
             #print(len(dnaseq))
             merge_region+=1
-        print('hi')
         codingseq=Seq(dnaseq,alphabet=generic_dna)
 
     good_dna=False

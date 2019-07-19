@@ -103,7 +103,7 @@ def plot_ebounds(mds,dbpathstr,dbseqidx,scorefield='normscore',start_stops='avg'
     for hrow in hrows:
         fycoord-=.06
         alstartenv=hrow['align_start']-hrow['hmm_start'] #switches to zero-based
-        alstopenv=hrow['align_stop']-(hrow['motifsize']-hrow['hmm_stop']+1) #switches to zero-based
+        alstopenv=hrow['align_stop']+(hrow['motifsize']-hrow['hmm_stop']+1) #switches to zero-based
         #htext=f"{hrow['motifacc']}: {hrow['align_start']}-{hrow['align_stop']} ({hrow['env_start']}-{hrow['env_stop']} )"
         htext=f"{hrow['motifacc']}: {hrow['align_start']}-{hrow['align_stop']} ({alstartenv}-{alstopenv} )"
         ax.text(0.3,fycoord,htext,size=14,transform=ax.transAxes)
@@ -161,10 +161,13 @@ def get_esizeprior(dbpathstr,max_esize=5000,eform='cc'):
         ccstop=row['pgbsr_ccstop']
         ccsizes.append(ccstop-ccstart+1)
         if eform in ['full','both']:
+#            try:
             fullstart=row['pgbsr_fullstart']
             fullstop=row['pgbsr_fullstop']
             if abs(fullstart-ccstart)>5 or abs(fullstop-ccstop)>5:
                 fullsizes.append(fullstop-fullstart+1)
+#            except:
+#                breakpoint()
     ccmedian=int(round(np.median(ccsizes),0))
     cc_shape=int((5/6)*max(0.15*max(ccsizes),max(ccsizes)-ccmedian,ccmedian-min(ccsizes)))
     cc_scale=int(2*cc_shape/3)
@@ -211,7 +214,7 @@ core_motifs={'GH5':['PF00150',[16,32]],'GH43':['PF04616',[2,13]],'GH8':['PF01270
 core_motifs.update({'GH9':['PF00759',[3,9]],'GH48':['PF02011',[24,32]],'AA10':['PF03067',[0,3]]})#Glyco_hydro_9,Glyco_hydro_48
 core_motifs.update({'AA9':['PF03443',[0,10]],'GH10':['PF00331',[3,2]],'GH26':['PF02156',[5,17]]})#Glyco_hydro_61,Glyco_hydro_10,Glyco_hydro_26
 core_motifs.update({'GH30':['PF02055',[-17,67]],'GH6':['PF01341',[5,5]]})#Glyco_hydro_30,Glyco_hydro_6
-addl_motifs.update({'GH5':{'PF18448':[5,5] }}) #CBM_X2
+addl_motifs.update({'GH5':{'PF18448':[5,5] }}) #CBM_X2, anything for GH5_5s?
 addl_motifs.update({'GH43':{'PF16369':[5,5],'PF17851':[5,5],'PF07081':[5,5],'PF14200':[5,5],'PF05270':[5,5],'PF00754':[5,5]} }) 
 #GH43_C,GH43_C2,DUF (always seen with 17851),RicinB_lectin_2,AbfB,F5_F8_type_C
 addl_motifs.update({'GH8':{}})
@@ -222,6 +225,7 @@ addl_motifs.update({'AA9':{}})
 addl_motifs.update({'GH10':{}})
 addl_motifs.update({'GH26':{}})
 addl_motifs.update({'GH30':{'PF17189':[5,5]}}) #Glyco_hydro_30C
+addl_motifs.update({'GH6':{}})
 def calc_prob_grid(acc,ghfam,esize_prior,dbpathstr,mds,eform='cc',exclude_self=False):
     conn=seqdbutils.gracefuldbopen(dbpathstr)
     c=conn.cursor()
@@ -243,9 +247,11 @@ def calc_prob_grid(acc,ghfam,esize_prior,dbpathstr,mds,eform='cc',exclude_self=F
     #first iterate through and find cc data...
     exp_core_begin=None
     exp_core_end=None
+    mm_cnt=0
     for hrow in hrows:
         motifacc=hrow['motifacc']
         if motifacc == core_motifs[ghfam][0]:
+            mm_cnt+=1
             pfam_core_begin=hrow['align_start']-hrow['hmm_start']
             pfam_core_end=hrow['align_stop']+(hrow['motifsize']-hrow['hmm_stop'])-1
             exp_next=core_motifs[ghfam][1][0] #nt-extension
@@ -254,14 +260,15 @@ def calc_prob_grid(acc,ghfam,esize_prior,dbpathstr,mds,eform='cc',exclude_self=F
             exp_core_end=pfam_core_end+exp_cext
             temparr=build_pfam_expmatrix(np.zeros((spgrid[0].shape)),exp_core_begin,exp_core_end)
             probdr.loc[:,:,'pfam_prior']+=temparr
-
+    if mm_cnt>1:
+        print('*possible double domain construct')
     addl_motif_accs=list(addl_motifs[ghfam].keys())
     if exp_core_begin is not None and exp_core_end is not None and eform=='full':
         for hrow in hrows:
             motifacc=hrow['motifacc']
             if motifacc in addl_motif_accs:
 #                print(motifacc,hrow['align_start'],hrow['align_stop'],hrow['hmm_stop'])
-                print(motifacc)
+                print(f'pfam aux motif {motifacc}')
                 pfam_motif_begin=hrow['align_start']-hrow['hmm_start']
                 pfam_motif_end=hrow['align_stop']+(hrow['motifsize']-hrow['hmm_stop'])-1
                 if pfam_motif_begin<exp_core_begin and pfam_motif_end<exp_core_end:
@@ -338,6 +345,10 @@ def get_start_stop(probxr):
     glength=len(probxr.start)
     posteriorgridimg=probxr.loc[:,:,'posterior'].values.copy()
     rps=get_startstop_rois(posteriorgridimg)
+    if len(rps)>0:
+        maxprob=max([np.sum(x.intensity_image) for x in rps])
+        if maxprob<0.3:
+            print('***warning-low max prob...***')
     ssrp=None
     if len(rps)==1:
         ssrp=rps[0]
@@ -347,10 +358,36 @@ def get_start_stop(probxr):
         rp2_wtdcentroid=rps[1].weighted_centroid
         rp2_wtdlength=rp2_wtdcentroid[0]-rp2_wtdcentroid[1]
         ssrp=rps[0]
-        if rp2_wtdlength>rp1_wtdlength:
-            ssrp=rps[1]
+        if abs(rp2_wtdlength-rp1_wtdlength)>40:
+            print('selecting based on significant length diff indicating aux module')
+            if rp2_wtdlength>rp1_wtdlength:
+                ssrp=rps[1]
+#                rp2wtdscore=min(3,3*(rp2_wtdlength-rp1_wtdlength)/100)*np.sum(rps[1].intensity_image)
+#                if rp2wtdscore>np.sum(rps[0].intensity_image):
+#                    print('sufficient score/lngth diff to choose longer')
+#                    ssrp=rps[1]
+#                else:
+#                    ssrp=rps[0]
+#            if rp1_wtdlength>rp2_wtdlength:
+#                rp1wtdscore=min(3,3*(rp1_wtdlength-rp2_wtdlength)/100)*np.sum(rps[0].intensity_image)
+#                if rp1wtdscore>np.sum(rps[1].intensity_image):
+#                    print('sufficient score/lngth diff to choose longer')
+#                    ssrp=rps[0]
+#                else:
+#                    ssrp=rps[1]
+##                ssrp=rps[1]
+        else: 
+            print('choosing based on prob intensity')
+            if np.sum(rps[1].intensity_image)>np.sum(rps[0].intensity_image):
+                ssrp=rps[1]
+#            elif np.max(rps[1].intensity_image)>2*np.max(rps[0].intensity_image):
+#                ssrp=rps[1]
+
+    elif len(rps)>2:
+        print('>2 possibilities. curious...')
+        return None
     else:
-        print('problem')
+        print('no probable location')
         return None
 
     construct_maxlength=ssrp.bbox[2]-ssrp.bbox[1]
@@ -366,7 +403,7 @@ def get_start_stop(probxr):
     maxlwtd=np.argmax(lwtdrp_intensity_image)
     max_lwtd_loc=np.unravel_index(maxlwtd,lwtdrp_intensity_image.shape)
     bestrow,bestcol=max_lwtd_loc[0]+ssrp.bbox[0],max_lwtd_loc[1]+ssrp.bbox[1]
-    if bestcol<=6:
+    if bestcol<=10:
         bestcol=0
     if abs(bestrow-glength)<=12:
         bestrow=glength

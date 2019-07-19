@@ -23,7 +23,7 @@ def update_entry(c,srid,sr):
         accvrsn=sr.annotations['sequence_version']
         accvrsn=int(accvrsn)
     except:
-        print(f'cannot get version # for {srid}')
+        #print(f'cannot get version # for {srid}')
         accvrsn=None
     seq_checksum=seguid(sr.seq)
     pklseq=pickle.dumps(sr.seq)
@@ -56,18 +56,19 @@ def update_if_needed(c,srid,sr):
             update_entry(c,srid,sr)
 
 
-
-def build_dnatable(dbpathstr,email,api_key,newdb=False,customlistfile=None,refresh=False,retry_fails=False,stopat=None):
+def build_dnatable(dbpathstr,email,api_key,newdb=False,acclist=[],customlistfile=None,refresh=False,retry_fails=False,stopat=None):
     Entrez.email=email
     Entrez.api_key=api_key
     conn=seqdbutils.gracefuldbopen(dbpathstr) 
     c=conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS DNATABLE (acc text, version text, ncbiscan_date text, modify_date text,\
                 seq_checksum text,pklseq glob, failcount int)''')
-    assert(os.path.exists(customlistfile))
+    accs2find=[]
     if customlistfile:
+        assert(os.path.exists(customlistfile))
         with open(customlistfile,'r') as f:
-            accs2find=[x.strip() for x in f.readlines()]
+            accs2find.extend([x.strip() for x in f.readlines()])
+    accs2find.extend(acclist)
     c.execute('''SELECT * FROM DNATABLE''')
     rows=c.fetchall()
     existing_accs=[x['acc'] for x in rows]
@@ -78,7 +79,7 @@ def build_dnatable(dbpathstr,email,api_key,newdb=False,customlistfile=None,refre
     todaystr=f'{today.year}-{today.month:02d}-{today.day:02d}'
     for srcnt,srid in enumerate(newacc2find):
         print(srid)
-        new_tuple=(srid,None,todaystr,None,None,None,None)
+        new_tuple=(srid,None,todaystr,None,None,None,0)
         c.execute('''INSERT INTO DNATABLE VALUES (?,?,?,?,?,?,?)''',new_tuple)
         sr=entrez_requests.getdnasr(srid)
         if sr is not None:
