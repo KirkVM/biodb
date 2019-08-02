@@ -458,6 +458,31 @@ def talign_plot(mplt1,mplt2,pwidf):
     plt.tight_layout()
 
 
+
+def bigplotter(accs,ghfam,mds,eform,savefigname=None):
+    #for a list of gbacc ids, calculates probgrid, then start_stops, then plot_ebounds
+    dbpathstr=f'{ghfam}/{ghfam}DB.sql'
+    esize_prior=get_esizeprior(dbpathstr,eform=eform)
+    fig,axs=plt.subplots(nrows=-(-len(accs)//3),ncols=3,figsize=(22, -(-len(accs)//3)*6 )    )
+    for accnum,acc in enumerate(accs):
+        ax=np.ravel(axs)[accnum]
+        if eform=='both':
+            ef='full'
+        probxr=calc_prob_grid(acc,ghfam,esize_prior,dbpathstr,mds,eform=ef,exclude_self=False)
+        startstop=get_start_stop(probxr)
+        dbseqidx=list(mds.dbseq.values).index(acc)
+        plot_ebounds(mds,dbpathstr,dbseqidx,ax=ax) 
+        if startstop is None:
+            startstop=['nd','nd']
+        sortedpdbscores=mds.vpwxra_cc.loc[acc,:,'normscore'].sortby(mds.vpwxra_cc.loc[acc,:,'normscore'],ascending=False)
+        ax.text(0.55,0.9,f'{startstop[0]} - {startstop[1]}',size=22,transform=ax.transAxes)
+        for score_rank in range(3):
+            ax.text(0.45,0.8-score_rank*0.06,
+                f'{sortedpdbscores.curateseq[score_rank].values.item(0)}: {sortedpdbscores[score_rank].values.item(0):.2f}',
+                size=20,transform=ax.transAxes)
+        if savefigname is not None:
+            plt.savefig(savefigname,dpi=100)
+
 def get_avg_exts(ghfam,dbpath):
     motifselection=core_motifs[ghfam][0]
     cc_sizes=[]
