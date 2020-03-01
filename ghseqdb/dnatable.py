@@ -97,7 +97,7 @@ def build_dnatable(dbpathstr,email,api_key,newdb=False,acclist=[],customlistfile
         row=c.fetchone()
         existingdate=datetime.date(*[int(x) for x in row['ncbiscan_date'].split('-')])
         days_since_update=(today-existingdate).days
-        if days_since_update>30:
+        if days_since_update>90:
             sr=entrez_requests.getdnasr(srid)
             update_if_needed(c,srid,sr)
     conn.commit()

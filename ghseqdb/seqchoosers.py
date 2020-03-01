@@ -300,7 +300,7 @@ def calc_prob_grid(acc,ghfam,esize_prior,dbpathstr,mds,eform='cc',exclude_self=F
                     continue
                 dist2peak=np.linalg.norm(np.array([xg,yg])-np.array([x,y]))
                 if dist2peak in student_dict.keys():
-                    temparr[yg,xg]=1e3*student_dict[dist2peak]*1e3**(ns.values.item(0)-0.1)
+                    temparr[yg,xg]=1e3*student_dict[dist2peak]*1e3**(ns.values.item(0)*1.8-0.1)
                 else:
                     studval=student.pdf(dist2peak,5,loc=0,scale=5)
                     student_dict[dist2peak]=studval
@@ -405,7 +405,7 @@ def get_start_stop(probxr):
     bestrow,bestcol=max_lwtd_loc[0]+ssrp.bbox[0],max_lwtd_loc[1]+ssrp.bbox[1]
     if bestcol<=10:
         bestcol=0
-    if abs(bestrow-glength)<=12:
+    if abs(bestrow-glength)<=16:
         bestrow=glength
     return bestcol,bestrow
 
@@ -466,8 +466,10 @@ def bigplotter(accs,ghfam,mds,eform,savefigname=None):
     fig,axs=plt.subplots(nrows=-(-len(accs)//3),ncols=3,figsize=(22, -(-len(accs)//3)*6 )    )
     for accnum,acc in enumerate(accs):
         ax=np.ravel(axs)[accnum]
-        if eform=='both':
+        if eform in ['both','full']:
             ef='full'
+        else:
+            ef='cc'
         probxr=calc_prob_grid(acc,ghfam,esize_prior,dbpathstr,mds,eform=ef,exclude_self=False)
         startstop=get_start_stop(probxr)
         dbseqidx=list(mds.dbseq.values).index(acc)
